@@ -5,11 +5,8 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({
-			// Enable static SPA mode for Cloudflare Pages
-			routes: {
-				include: ['/*'],
-				exclude: []
-			}
+			// Configure for Cloudflare Pages static deployment
+			fallback: 'index.html'
 		}),
 		alias: {
 			'@/*': 'src/lib/*'
