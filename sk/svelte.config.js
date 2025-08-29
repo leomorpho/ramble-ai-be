@@ -5,8 +5,10 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({
-			// Configure for Cloudflare Pages static deployment
-			fallback: 'index.html'
+			// Static mode - no server-side functions
+			platformProxy: {
+				persist: false
+			}
 		}),
 		alias: {
 			'@/*': 'src/lib/*'
