@@ -30,6 +30,9 @@ WORKDIR /app
 # Copy the compiled binary from the backend builder
 COPY --from=backend-builder /app/pocketbase ./pocketbase
 
+# Copy the schema file for database initialization
+COPY --from=backend-builder /app/pb_bootstrap ./pb_bootstrap
+
 # No frontend files needed - PocketBase is backend-only
 
 # Create data directory for PocketBase
