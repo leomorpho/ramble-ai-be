@@ -1,0 +1,12 @@
+#!/bin/bash
+echo "🧪 Running pre-commit tests..."
+cd sk
+if ! npm run test:unit -- --run; then
+    echo "❌ Unit tests failed. Commit aborted."
+    exit 1
+fi
+if ! npm run test:e2e; then
+    echo "❌ E2E tests failed. Commit aborted."
+    exit 1
+fi
+echo "✅ All tests passed! Proceeding with commit."

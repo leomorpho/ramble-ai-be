@@ -1,0 +1,24 @@
+/.cache
+/.config
+/pocketbase
+/*.zip
+/pb_data
+/tmp
+/pocketbase.exe
+
+# Environment variables (contains secrets)
+.env
+.kamal/secrets
+
+# Binaries
+*.exe
+*.app
+*.dmg
+*.deb
+*.rpm
+*.msi
+*.bin
+*.so
+*.dll
+*.dylib
+subscription_test

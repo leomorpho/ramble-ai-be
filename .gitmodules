@@ -1,0 +1,3 @@
+[submodule "pb-be"]
+	path = pb-be
+	url = git@github.com:leomorpho/ramble-ai-be.git
