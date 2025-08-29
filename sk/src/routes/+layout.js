@@ -1,2 +1,3 @@
-// Enable prerendering for all pages to make this a fully static site
-export const prerender = true;
+// SPA configuration: no prerendering, no SSR, all client-side
+export const prerender = false;
+export const ssr = false;
