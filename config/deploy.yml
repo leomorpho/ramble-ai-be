@@ -72,7 +72,12 @@ volumes:
 # asset_path: /app/public/assets
 
 # Configure rolling deploys by setting a wait time between batches of restarts.
+# Also configure deployment timeouts for PocketBase initialization.
 #
-# boot:
+boot:
+  # Deployment timeouts for PocketBase database initialization
+  deploy_timeout: 60    # Wait up to 60s for container to become ready (default: 30s)
+  readiness_delay: 10   # Wait 10s before starting health checks (default: 7s)  
+  drain_timeout: 45     # Wait 45s for graceful shutdown (default: 30s)
 #   limit: 10 # Can also specify as a percentage of total hosts, such as "25%"
 #   wait: 2

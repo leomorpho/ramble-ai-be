@@ -39,7 +39,8 @@ RUN mkdir -p /app/pb_data
 EXPOSE 8090
 
 # Add health check for Kamal deployment
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+# Optimized timing for PocketBase initialization with schema loading
+HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8090/api/health || exit 1
 
 # Run PocketBase server with data directory

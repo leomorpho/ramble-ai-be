@@ -91,6 +91,11 @@ func main() {
 			if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
 				log.Printf("Warning: Failed to seed subscription plans: %v", err)
 			}
+		} else {
+			// Production mode: Create superuser if none exists
+			if err := createSuperuserIfNeeded(app); err != nil {
+				log.Printf("Warning: Failed to create superuser: %v", err)
+			}
 		}
 
 
@@ -368,4 +373,41 @@ func logWhisperConfiguration() {
 	// Also log the PocketBase body limit for comparison
 	bodyLimitGB := float64(2<<30) / (1024 * 1024 * 1024)
 	log.Printf("[WHISPER_CONFIG] PocketBase body limit: %.0f GB for audio uploads", bodyLimitGB)
+}
+
+// createSuperuserIfNeeded creates a superuser account if none exists (for production deployment)
+func createSuperuserIfNeeded(app *pocketbase.PocketBase) error {
+	// Get admin credentials from environment
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	
+	if adminEmail == "" || adminPassword == "" {
+		log.Printf("ADMIN_EMAIL or ADMIN_PASSWORD not set, skipping superuser creation")
+		return nil
+	}
+
+	// Check if this superuser already exists
+	existingSuperuser, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, adminEmail)
+	if err == nil && existingSuperuser != nil {
+		log.Printf("Superuser %s already exists, skipping creation", adminEmail)
+		return nil
+	}
+
+	// Get the superusers collection
+	superusersCol, err := app.FindCachedCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil {
+		return err
+	}
+
+	// Create new superuser record
+	superuser := core.NewRecord(superusersCol)
+	superuser.SetEmail(adminEmail)
+	superuser.SetPassword(adminPassword)
+
+	if err := app.Save(superuser); err != nil {
+		return err
+	}
+
+	log.Printf("Successfully created superuser account: %s", adminEmail)
+	return nil
 }
