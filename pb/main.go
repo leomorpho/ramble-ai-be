@@ -180,9 +180,8 @@ func main() {
 
 
 
-		// Serve static files from the provided public dir (if exists)
-		// This must be registered last as it's a catch-all route
-		se.Router.GET("/{path...}", apis.Static(os.DirFS("./pb_public"), false))
+		// PocketBase is backend-only - no static file serving
+		// Frontend will be deployed separately
 
 		return se.Next()
 	})
