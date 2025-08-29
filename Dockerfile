@@ -28,9 +28,6 @@ WORKDIR /app
 # Copy the compiled binary from the builder image
 COPY --from=builder /app/pocketbase ./pocketbase
 
-# Copy frontend build (SvelteKit static files) 
-COPY sk/build ./pb_public
-
 # Create data directory for PocketBase
 RUN mkdir -p /app/pb_data
 
