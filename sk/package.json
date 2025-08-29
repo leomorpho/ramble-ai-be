@@ -30,7 +30,7 @@
 		"@storybook/addon-svelte-csf": "^5.0.3",
 		"@storybook/addon-vitest": "^9.0.12",
 		"@storybook/sveltekit": "^9.0.12",
-		"@sveltejs/adapter-static": "^3.0.8",
+		"@sveltejs/adapter-cloudflare": "^7.2.3",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/typography": "^0.5.15",

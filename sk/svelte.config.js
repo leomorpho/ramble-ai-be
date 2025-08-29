@@ -1,14 +1,15 @@
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({
-			// Configure as SPA with fallback to index.html
-			fallback: 'index.html',
-			precompress: false,
-			strict: false
+			// Enable static SPA mode for Cloudflare Pages
+			routes: {
+				include: ['/*'],
+				exclude: []
+			}
 		}),
 		alias: {
 			'@/*': 'src/lib/*'

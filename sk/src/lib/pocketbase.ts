@@ -9,6 +9,7 @@ import type {
 import { readable, type Readable, type Subscriber } from "svelte/store";
 import { browser } from "$app/environment";
 import { base } from "$app/paths";
+import { env } from "$env/dynamic/public";
 import { invalidateAll } from "$app/navigation";
 import type { TypedPocketBase } from "./generated-types";
 import {
@@ -21,12 +22,17 @@ import { alerts } from "$lib/components/Alerts.svelte";
 function getPocketBaseURL() {
   if (!browser) return undefined;
   
-  // In development, use localhost:8090
+  // Use environment variable if set (for production)
+  if (env.VITE_POCKETBASE_URL) {
+    return env.VITE_POCKETBASE_URL;
+  }
+  
+  // Fallback for development
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return 'http://localhost:8090';
   }
   
-  // In production, use the same origin as the frontend
+  // Last resort fallback (shouldn't happen with proper env config)
   return window.location.origin + base;
 }
 
