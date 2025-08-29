@@ -5,11 +5,9 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -66,37 +64,6 @@ func main() {
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		// Configure CORS for frontend deployed on Cloudflare Pages
-		se.Router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				origin := c.Request().Header.Get("Origin")
-				
-				// Allow localhost for development
-				if origin == "http://localhost:5173" || origin == "http://localhost:4173" || origin == "http://localhost:3000" {
-					c.Response().Header().Set("Access-Control-Allow-Origin", origin)
-				} else if strings.HasSuffix(origin, ".pages.dev") || strings.Contains(origin, "cloudflare") {
-					// Allow Cloudflare Pages domains
-					c.Response().Header().Set("Access-Control-Allow-Origin", origin)
-				} else {
-					// Allow custom domain if set in environment variable
-					allowedOrigin := os.Getenv("FRONTEND_URL")
-					if allowedOrigin != "" && origin == allowedOrigin {
-						c.Response().Header().Set("Access-Control-Allow-Origin", origin)
-					}
-				}
-				
-				c.Response().Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-				c.Response().Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
-				c.Response().Header().Set("Access-Control-Allow-Credentials", "true")
-				
-				// Handle preflight requests
-				if c.Request().Method == "OPTIONS" {
-					return c.NoContent(204)
-				}
-				
-				return next(c)
-			}
-		})
 
 		// Configure request body size limit for large audio files
 		se.Server.MaxHeaderBytes = 1 << 20  // 1MB for headers
