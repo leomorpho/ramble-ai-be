@@ -1,5 +1,25 @@
-# Stage 1: Build PocketBase
-FROM golang:1.24.3-bullseye AS builder
+# Stage 1: Build SvelteKit frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy package files
+COPY sk/package*.json ./
+COPY sk/pnpm-lock.yaml ./
+
+# Install dependencies 
+RUN npm install -g pnpm && pnpm install
+
+# Copy source code
+COPY sk/ .
+
+# Build the frontend
+RUN pnpm build
+
+################################################
+# Stage 2: Build PocketBase
+################################################
+FROM golang:1.24.3-bullseye AS backend-builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -15,7 +35,7 @@ COPY pb/ .
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o pocketbase main.go
 
 ################################################
-# Stage 2: Create a smaller runtime image
+# Stage 3: Create a smaller runtime image
 ################################################
 FROM alpine:3.20
 
@@ -25,8 +45,11 @@ RUN apk --no-cache add ca-certificates libc6-compat
 # Set working directory
 WORKDIR /app
 
-# Copy the compiled binary from the builder image
-COPY --from=builder /app/pocketbase ./pocketbase
+# Copy the compiled binary from the backend builder
+COPY --from=backend-builder /app/pocketbase ./pocketbase
+
+# Copy frontend build (SvelteKit static files) from frontend builder
+COPY --from=frontend-builder /frontend/build ./pb_public
 
 # Create data directory for PocketBase
 RUN mkdir -p /app/pb_data
