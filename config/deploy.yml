@@ -17,6 +17,9 @@ proxy:
   host: ramble.goosebyteshq.com
   # PocketBase runs on port 8090
   app_port: 8090
+  # Increase timeouts for PocketBase initialization
+  deploy_timeout: 60s
+  drain_timeout: 45s
 
 # Credentials for your image host.
 registry:
