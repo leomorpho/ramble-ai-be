@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/authClient.svelte';
-	import { client } from '$lib/pocketbase';
+	import { client, getPocketBaseURL } from '$lib/pocketbase';
 	
 	import EmailStep from './EmailStep.svelte';
 	import AuthMethodSelector from './AuthMethodSelector.svelte';
@@ -30,9 +30,7 @@
 	async function checkUserPasskeys(emailAddress: string): Promise<boolean> {
 		try {
 			// Try to fetch login options to see if user has passkeys
-			const baseURL = client.baseUrl || (typeof window !== 'undefined' ? 
-				(window.location.hostname === 'localhost' ? 'http://localhost:8090' : window.location.origin) : 
-				undefined);
+			const baseURL = getPocketBaseURL();
 			
 			if (!baseURL) return false;
 			

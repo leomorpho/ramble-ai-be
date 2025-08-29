@@ -7,7 +7,7 @@
 	import { cn, type WithElementRef } from '$lib/utils.js';
 	import { authStore } from '$lib/stores/authClient.svelte';
 	import { goto } from '$app/navigation';
-	import { webauthnLogin } from '$lib/pocketbase';
+	import { webauthnLogin, getPocketBaseURL } from '$lib/pocketbase';
 	import { Key, Eye, EyeOff } from 'lucide-svelte';
 	import PasskeyRegistration from './PasskeyRegistration.svelte';
 	import SignupForm from './SignupForm.svelte';
@@ -49,7 +49,7 @@
 
 	async function checkUserPasskeys(emailAddress: string): Promise<boolean> {
 		try {
-			const baseURL = 'http://localhost:8090'; // Use same as pocketbase.ts
+			const baseURL = getPocketBaseURL() || 'http://localhost:8090';
 			const response = await fetch(`${baseURL}/api/webauthn/login-options?usernameOrEmail=${encodeURIComponent(emailAddress)}`);
 			return response.ok;
 		} catch {

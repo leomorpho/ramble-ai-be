@@ -19,7 +19,7 @@ import {
 import { alerts } from "$lib/components/Alerts.svelte";
 
 // Determine the PocketBase URL based on environment
-function getPocketBaseURL() {
+export function getPocketBaseURL() {
   if (!browser) return undefined;
   
   // Use environment variable if set (for production)

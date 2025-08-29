@@ -1,8 +1,9 @@
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/browser';
+import { getPocketBaseURL } from './pocketbase';
 
 // Use the same base URL as the rest of the app
-const API_BASE = 'http://localhost:8090';
+const getAPIBase = () => getPocketBaseURL() || 'http://localhost:8090';
 
 export interface WebAuthnResult {
 	success: boolean;
@@ -20,7 +21,7 @@ export async function registerPasskey(usernameOrEmail: string): Promise<WebAuthn
 		// Get registration options from the server
 		console.log('Fetching registration options for:', usernameOrEmail);
 		const optionsResponse = await fetch(
-			`${API_BASE}/api/webauthn/registration-options?usernameOrEmail=${encodeURIComponent(usernameOrEmail)}`
+			`${getAPIBase()}/api/webauthn/registration-options?usernameOrEmail=${encodeURIComponent(usernameOrEmail)}`
 		);
 
 		if (!optionsResponse.ok) {
@@ -49,7 +50,7 @@ export async function registerPasskey(usernameOrEmail: string): Promise<WebAuthn
 		}
 
 		// Send the registration response to the server
-		const verificationResponse = await fetch(`${API_BASE}/api/webauthn/register`, {
+		const verificationResponse = await fetch(`${getAPIBase()}/api/webauthn/register`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
@@ -85,7 +86,7 @@ export async function authenticateWithPasskey(usernameOrEmail: string): Promise<
 	try {
 		// Get authentication options from the server
 		const optionsResponse = await fetch(
-			`${API_BASE}/api/webauthn/login-options?usernameOrEmail=${encodeURIComponent(usernameOrEmail)}`
+			`${getAPIBase()}/api/webauthn/login-options?usernameOrEmail=${encodeURIComponent(usernameOrEmail)}`
 		);
 
 		if (!optionsResponse.ok) {
@@ -107,7 +108,7 @@ export async function authenticateWithPasskey(usernameOrEmail: string): Promise<
 		}
 
 		// Send the authentication response to the server
-		const verificationResponse = await fetch(`${API_BASE}/api/webauthn/login`, {
+		const verificationResponse = await fetch(`${getAPIBase()}/api/webauthn/login`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
