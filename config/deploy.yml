@@ -19,7 +19,7 @@ readiness_delay: 10    # Wait 10s before starting readiness checks (default: 7)
 # Note: If using Cloudflare, set encryption mode in SSL/TLS setting to "Full" to enable CF-to-app encryption.
 proxy:
   ssl: true
-  host: ramble.goosebyteshq.com
+  host: api.ramble.goosebyteshq.com
   # PocketBase runs on port 8090
   app_port: 8090
   # Configure health check to use PocketBase's health endpoint
@@ -46,7 +46,7 @@ builder:
 env:
   clear:
     DEVELOPMENT: false
-    HOST: https://ramble.goosebyteshq.com
+    HOST: https://api.ramble.goosebyteshq.com
   secret:
     - STRIPE_SECRET_KEY
     - STRIPE_SECRET_WHSEC
