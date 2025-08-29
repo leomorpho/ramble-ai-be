@@ -102,6 +102,14 @@ func main() {
 			return stripehandlers.HandleWebhook(e, app)
 		})
 
+		// Health check endpoint for Kamal deployment
+		se.Router.GET("/api/health", func(e *core.RequestEvent) error {
+			return e.JSON(200, map[string]interface{}{
+				"status": "ok",
+				"timestamp": time.Now().Unix(),
+			})
+		})
+
 		// Subscription management routes
 		se.Router.GET("/api/subscription/info", func(e *core.RequestEvent) error {
 			return stripehandlers.GetUserSubscriptionInfo(e, app)

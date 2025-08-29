@@ -39,8 +39,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o pocketbase main.go
 ################################################
 FROM alpine:3.20
 
-# Install necessary packages
-RUN apk --no-cache add ca-certificates libc6-compat
+# Install necessary packages including wget for health checks
+RUN apk --no-cache add ca-certificates libc6-compat wget
 
 # Set working directory
 WORKDIR /app
@@ -56,6 +56,10 @@ RUN mkdir -p /app/pb_data
 
 # Expose PocketBase port
 EXPOSE 8090
+
+# Add health check for Kamal deployment
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8090/api/health || exit 1
 
 # Run PocketBase server with data directory
 ENTRYPOINT ["./pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/app/pb_data"]
