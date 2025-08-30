@@ -92,6 +92,7 @@ type WebhookEventData struct {
 type ValidationError struct {
 	Field   string
 	Message string
+	Code    string // Optional error code for programmatic handling
 }
 
 func (e ValidationError) Error() string {

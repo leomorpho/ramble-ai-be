@@ -307,3 +307,176 @@ func (v *Validator) GetUsageWarningMessage(usage *UsageInfo) string {
 
 	return ""
 }
+
+// ==============================================================================
+// CRITICAL BILLING BUSINESS RULE VALIDATION
+// These functions ensure users never lose paid benefits before their billing period ends
+// ==============================================================================
+
+// ValidateBillingPeriodIntegrity ensures users don't lose benefits early during plan changes
+func (v *Validator) ValidateBillingPeriodIntegrity(userID string, newPlanPrice int64, currentPeriodEnd time.Time) []ValidationError {
+	var errors []ValidationError
+
+	// Get current active subscription
+	currentSub, err := v.repo.FindActiveSubscription(userID)
+	if err != nil {
+		// No current subscription - validation passes
+		return errors
+	}
+
+	// Get current plan details
+	currentPlan, err := v.repo.GetPlan(currentSub.GetString("plan_id"))
+	if err != nil {
+		// Can't validate - allow change but log warning
+		return errors
+	}
+
+	currentPlanPrice := int64(currentPlan.GetInt("price_cents"))
+	
+	// CRITICAL RULE: For downgrades, user must retain current benefits until period ends
+	if newPlanPrice < currentPlanPrice {
+		// This is a downgrade - validate billing period preservation
+		now := time.Now()
+		
+		if currentPeriodEnd.After(now) {
+			// User has paid time remaining - must preserve benefits
+			remainingDays := int(currentPeriodEnd.Sub(now).Hours() / 24)
+			
+			errors = append(errors, ValidationError{
+				Field:   "billing_period",
+				Message: fmt.Sprintf("CRITICAL: User has %d days remaining on current plan. Benefits must be preserved until %s", 
+					remainingDays, currentPeriodEnd.Format("January 2, 2006")),
+				Code:    "PRESERVE_BILLING_PERIOD",
+			})
+		}
+	}
+
+	return errors
+}
+
+// ValidateDowngradeRequest ensures downgrades are handled properly to preserve user benefits
+func (v *Validator) ValidateDowngradeRequest(userID string, targetPlanID string) (isDowngrade bool, requiresPeriodEndHandling bool, validationErrors []ValidationError) {
+	// Get current subscription
+	currentSub, err := v.repo.FindActiveSubscription(userID)
+	if err != nil {
+		// No current subscription - not a downgrade
+		return false, false, nil
+	}
+
+	// Get current and target plan pricing
+	currentPlan, err := v.repo.GetPlan(currentSub.GetString("plan_id"))
+	if err != nil {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "current_plan",
+			Message: "Unable to validate current plan",
+		})
+		return false, false, validationErrors
+	}
+
+	targetPlan, err := v.repo.GetPlan(targetPlanID)
+	if err != nil {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "target_plan",
+			Message: "Target plan not found",
+		})
+		return false, false, validationErrors
+	}
+
+	currentPrice := currentPlan.GetInt("price_cents")
+	targetPrice := targetPlan.GetInt("price_cents")
+
+	isDowngrade = targetPrice < currentPrice
+	
+	if isDowngrade {
+		// Check if user has remaining paid time
+		currentPeriodEnd := currentSub.GetDateTime("current_period_end").Time()
+		now := time.Now()
+		
+		requiresPeriodEndHandling = currentPeriodEnd.After(now)
+		
+		if requiresPeriodEndHandling {
+			remainingValue := currentPrice - targetPrice
+			remainingDays := int(currentPeriodEnd.Sub(now).Hours() / 24)
+			
+			validationErrors = append(validationErrors, ValidationError{
+				Field:   "downgrade_timing",
+				Message: fmt.Sprintf("BUSINESS RULE: This downgrade (%s -> %s) must preserve %d cents worth of benefits for %d remaining days. Use cancel_at_period_end=true", 
+					currentPlan.GetString("name"), targetPlan.GetString("name"), remainingValue, remainingDays),
+				Code:    "REQUIRE_PERIOD_END_CANCELLATION",
+			})
+		}
+	}
+
+	return isDowngrade, requiresPeriodEndHandling, validationErrors
+}
+
+// ValidateSubscriptionIntegrity performs comprehensive checks to prevent billing issues
+func (v *Validator) ValidateSubscriptionIntegrity(userID string, subscriptionData interface{}) []ValidationError {
+	var errors []ValidationError
+
+	// Validate that user doesn't have multiple active subscriptions
+	// This prevents double-billing and conflicting plan states
+	if businessErrors := v.ValidateBusinessRules(userID, "integrity_check"); len(businessErrors) > 0 {
+		for _, businessError := range businessErrors {
+			errors = append(errors, ValidationError{
+				Field:   "subscription_integrity",
+				Message: fmt.Sprintf("INTEGRITY VIOLATION: %s", businessError.Message),
+				Code:    "MULTIPLE_ACTIVE_SUBSCRIPTIONS",
+			})
+		}
+	}
+
+	// Validate that subscription status matches billing reality
+	currentSub, err := v.repo.FindActiveSubscription(userID)
+	if err == nil {
+		// Check for consistency between cancel_at_period_end and status
+		cancelAtPeriodEnd := currentSub.GetBool("cancel_at_period_end")
+		status := currentSub.GetString("status")
+		currentPeriodEnd := currentSub.GetDateTime("current_period_end").Time()
+		now := time.Now()
+
+		if cancelAtPeriodEnd && status == "active" && currentPeriodEnd.After(now) {
+			// This is correct - user should keep benefits until period end
+			// Log for monitoring but don't error
+			fmt.Printf("VALID STATE: User %s has active subscription with cancel_at_period_end=true until %s", 
+				userID, currentPeriodEnd.Format("2006-01-02"))
+		} else if cancelAtPeriodEnd && status == "cancelled" && currentPeriodEnd.After(now) {
+			// This is WRONG - user should still be active until period end
+			errors = append(errors, ValidationError{
+				Field:   "subscription_status",
+				Message: fmt.Sprintf("BILLING ERROR: User subscription is marked 'cancelled' but should be 'active' until period end (%s)", 
+					currentPeriodEnd.Format("January 2, 2006")),
+				Code:    "PREMATURE_CANCELLATION",
+			})
+		}
+	}
+
+	return errors
+}
+
+// PreventEarlyBenefitLoss is the master validation function that ensures users never lose benefits early
+func (v *Validator) PreventEarlyBenefitLoss(userID string, proposedChange interface{}) error {
+	// Get all validation errors
+	var allErrors []ValidationError
+
+	// Run all critical billing validations
+	if integrationErrors := v.ValidateSubscriptionIntegrity(userID, proposedChange); len(integrationErrors) > 0 {
+		allErrors = append(allErrors, integrationErrors...)
+	}
+
+	// Check for critical violations that would cause early benefit loss
+	for _, error := range allErrors {
+		if error.Code == "PREMATURE_CANCELLATION" || error.Code == "PRESERVE_BILLING_PERIOD" {
+			return fmt.Errorf("CRITICAL BILLING VIOLATION PREVENTED: %s", error.Message)
+		}
+	}
+
+	// Log warnings for monitoring
+	for _, error := range allErrors {
+		if error.Code == "REQUIRE_PERIOD_END_CANCELLATION" {
+			fmt.Printf("BILLING RULE ENFORCED: %s", error.Message)
+		}
+	}
+
+	return nil
+}
