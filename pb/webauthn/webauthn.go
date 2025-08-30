@@ -115,7 +115,7 @@ func Register(app *pocketbase.PocketBase) {
 	
 	if origin == "" {
 		origin = "http://localhost:8090" // Default for development
-		app.Logger().Warn("WebAuthn: AppURL is not set in config, using default:", origin)
+		app.Logger().Warn("WebAuthn: AppURL is not set in config, using default", "origin", origin)
 	}
 	
 	// Extract domain from origin
