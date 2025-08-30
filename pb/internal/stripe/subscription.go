@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	subscriptionService "pocketbase/internal/subscription"
 )
 
 // GetUserSubscriptionRequest represents the request for getting user subscription info
@@ -28,35 +29,14 @@ func GetUserSubscriptionInfo(e *core.RequestEvent, app core.App) error {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
 	}
 
-	// Get user's subscription
-	subscription, err := GetUserSubscription(app, userID)
+	// Create subscription service
+	repo := subscriptionService.NewRepository(app)
+	service := subscriptionService.NewService(repo)
+
+	// Get comprehensive subscription info using the service
+	info, err := service.GetUserSubscriptionInfo(userID)
 	if err != nil {
 		return e.JSON(http.StatusNotFound, map[string]string{"error": "No subscription found"})
-	}
-
-	// Get subscription plan
-	plan, err := GetSubscriptionPlan(app, subscription.GetString("plan_id"))
-	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get plan details"})
-	}
-
-	// Get usage information
-	usage, err := GetUserUsageInfo(app, userID)
-	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get usage info"})
-	}
-
-	// Get all available plans
-	availablePlans, err := app.FindRecordsByFilter("subscription_plans", "is_active = true", "+display_order", 0, 0)
-	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get available plans"})
-	}
-
-	info := &SubscriptionInfo{
-		Subscription:   subscription,
-		Plan:          plan,
-		Usage:         usage,
-		AvailablePlans: availablePlans,
 	}
 
 	return e.JSON(http.StatusOK, info)
@@ -75,43 +55,30 @@ func SwitchToFreePlan(e *core.RequestEvent, app core.App) error {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// Get free plan
-	freePlan, err := app.FindFirstRecordByFilter("subscription_plans", "billing_interval = 'free'", map[string]any{})
+	// Create subscription service
+	repo := subscriptionService.NewRepository(app)
+	service := subscriptionService.NewService(repo)
+
+	// Switch user to free plan using the service
+	subscription, err := service.SwitchToFreePlan(data.UserID)
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to find free plan"})
-	}
-
-	// Get user's current subscription
-	subscription, err := GetUserSubscription(app, data.UserID)
-	if err != nil {
-		return e.JSON(http.StatusNotFound, map[string]string{"error": "No subscription found"})
-	}
-
-	// Update subscription to free plan
-	now := time.Now()
-	oneYearFromNow := now.AddDate(1, 0, 0) // Free plan lasts 1 year
-
-	subscription.Set("plan_id", freePlan.Id)
-	subscription.Set("stripe_subscription_id", nil) // Remove Stripe subscription
-	subscription.Set("status", "active")
-	subscription.Set("current_period_start", now)
-	subscription.Set("current_period_end", oneYearFromNow)
-	subscription.Set("cancel_at_period_end", false)
-	subscription.Set("canceled_at", now) // Mark when downgraded
-
-	if err := app.Save(subscription); err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update subscription"})
+		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to switch to free plan"})
 	}
 
 	return e.JSON(http.StatusOK, map[string]string{
 		"message": "Successfully switched to free plan",
-		"plan_id": freePlan.Id,
+		"plan_id": subscription.GetString("plan_id"),
 	})
 }
 
 // GetAvailablePlans returns all available subscription plans
 func GetAvailablePlans(e *core.RequestEvent, app core.App) error {
-	plans, err := app.FindRecordsByFilter("subscription_plans", "is_active = true", "+display_order", 0, 0)
+	// Create subscription service
+	repo := subscriptionService.NewRepository(app)
+	service := subscriptionService.NewService(repo)
+
+	// Get available plans using the service
+	plans, err := service.GetAvailablePlans()
 	if err != nil {
 		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get plans"})
 	}
@@ -208,30 +175,30 @@ func GetPlanUpgrades(e *core.RequestEvent, app core.App) error {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
 	}
 
-	// Get user's current subscription
-	subscription, err := GetUserSubscription(app, userID)
+	// Create subscription service
+	repo := subscriptionService.NewRepository(app)
+	service := subscriptionService.NewService(repo)
+
+	// Get current subscription and plan
+	currentSubscription, err := service.GetUserActiveSubscription(userID)
 	if err != nil {
 		return e.JSON(http.StatusNotFound, map[string]string{"error": "No subscription found"})
 	}
 
-	// Get current plan
-	currentPlan, err := GetSubscriptionPlan(app, subscription.GetString("plan_id"))
+	repo2 := subscriptionService.NewRepository(app)
+	currentPlan, err := repo2.GetPlan(currentSubscription.GetString("plan_id"))
 	if err != nil {
 		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get current plan"})
 	}
 
-	currentHoursLimit := currentPlan.GetFloat("hours_per_month")
-
-	// Get all plans with higher limits (upgrades only)
-	allPlans, err := app.FindRecordsByFilter("subscription_plans", "is_active = true AND hours_per_month > {:current_hours}", "+display_order", 0, 0, map[string]any{
-		"current_hours": currentHoursLimit,
-	})
+	// Get available upgrades using the service
+	upgrades, err := service.GetPlanUpgrades(userID)
 	if err != nil {
 		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get upgrade options"})
 	}
 
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"current_plan": currentPlan,
-		"upgrades":     allPlans,
+		"upgrades":     upgrades,
 	})
 }

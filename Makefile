@@ -68,13 +68,22 @@ build-backend: ## Build only the backend
 	@cd pb && go build
 
 # Testing commands
-test: ## Run all tests
+test: ## Run all tests (frontend + backend)
+	@echo "Running frontend tests..."
+	@cd sk && npm run test
+	@echo "Running backend tests..."
+	@cd pb && go test ./... -v
+
+test-frontend: ## Run frontend tests only
 	@cd sk && npm run test
 
-test-unit: ## Run unit tests only
+test-go: ## Run Go backend tests
+	@cd pb && go test ./... -v
+
+test-unit: ## Run frontend unit tests only
 	@cd sk && npm run test:unit
 
-test-e2e: ## Run e2e tests only
+test-e2e: ## Run frontend e2e tests only
 	@cd sk && npm run test:e2e
 
 # Code quality commands

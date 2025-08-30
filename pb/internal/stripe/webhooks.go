@@ -14,6 +14,8 @@ import (
 	"github.com/stripe/stripe-go/v79"
 	"github.com/stripe/stripe-go/v79/subscription"
 	"github.com/stripe/stripe-go/v79/webhook"
+
+	subscriptionService "pocketbase/internal/subscription"
 )
 
 // HandleWebhook processes Stripe webhook events
@@ -52,7 +54,11 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// Handle the event
+	// Create subscription service
+	repo := subscriptionService.NewRepository(app)
+	service := subscriptionService.NewService(repo)
+
+	// Handle the event using the subscription service
 	switch event.Type {
 	case "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted":
 		var sub stripe.Subscription
@@ -60,7 +66,7 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 			log.Printf("Error parsing webhook JSON: %v", err)
 			return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		if err := handleSubscriptionEvent(app, &sub, string(event.Type)); err != nil {
+		if err := service.HandleSubscriptionEvent(&sub, string(event.Type)); err != nil {
 			log.Printf("Error handling subscription event: %v", err)
 		}
 
@@ -80,7 +86,7 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 			log.Printf("Error parsing invoice webhook JSON: %v", err)
 			return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		if err := handlePaymentFailed(app, &invoice); err != nil {
+		if err := service.HandlePaymentFailed(&invoice); err != nil {
 			log.Printf("Error handling payment failure: %v", err)
 		}
 

@@ -71,6 +71,35 @@ export async function createPortalLink() {
 	return url;
 }
 
+// Helper to change plan directly (for downgrades/cancellations)
+export async function changePlan(planId: string) {
+	if (!browser) return null;
+	
+	const user = authStore.user;
+	if (!user) {
+		throw new Error('User must be logged in to change plan');
+	}
+
+	const response = await fetch(`${pb.baseUrl}/change-plan`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			plan_id: planId,
+			user_id: user.id
+		})
+	});
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || 'Failed to change plan');
+	}
+
+	const result = await response.json();
+	return result;
+}
+
 // Helper to format price from cents
 export function formatPrice(amountInCents: number, currency: string = 'usd'): string {
 	return new Intl.NumberFormat('en-US', {
