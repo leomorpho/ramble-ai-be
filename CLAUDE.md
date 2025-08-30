@@ -205,11 +205,13 @@ This application includes full Stripe payment processing capabilities for subscr
 ```bash
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
 STRIPE_SECRET_WHSEC=whsec_your_webhook_signing_secret_here
-STRIPE_CANCEL_URL=http://localhost:5174/pricing?canceled=true
-STRIPE_SUCCESS_URL=http://localhost:5174/billing?success=true
 HOST=http://localhost:8090
 DEVELOPMENT=true
 ```
+
+**Note**: Stripe redirect URLs are dynamically constructed using `HOST + route paths`:
+- Success URL: `{HOST}/billing?success=true`
+- Cancel URL: `{HOST}/pricing?canceled=true`
 
 **⚠️ SECURITY**: Never commit `.env` file to git. Use `.env.example` as template.
 

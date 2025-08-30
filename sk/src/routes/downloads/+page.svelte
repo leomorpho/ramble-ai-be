@@ -392,15 +392,5 @@
 			</div>
 		</div>
 
-		<!-- Installation help -->
-		<div class="mt-8 text-center">
-			<p class="text-sm text-muted-foreground mb-2">
-				Need help installing? Check out our
-			</p>
-			<Button variant="link" onclick={() => window.open('https://docs.ramble.ai/installation', '_blank')}>
-				<ExternalLink class="mr-2 h-3 w-3" />
-				Installation Guide
-			</Button>
-		</div>
 	{/if}
 </div>

@@ -3,6 +3,7 @@ package stripe
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
@@ -20,6 +21,17 @@ type CreateCheckoutSessionRequest struct {
 // CreatePortalLinkRequest represents the request payload for creating a portal link
 type CreatePortalLinkRequest struct {
 	UserID string `json:"user_id"`
+}
+
+// getBaseURL returns the base URL for the application, falling back to localhost:8090 if HOST is not set
+func getBaseURL() string {
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = "http://localhost:8090"
+	}
+	// Ensure HOST doesn't have trailing slash
+	host = strings.TrimSuffix(host, "/")
+	return host
 }
 
 // CreateCheckoutSession handles the creation of Stripe checkout sessions
@@ -62,8 +74,8 @@ func CreateCheckoutSession(e *core.RequestEvent, app *pocketbase.PocketBase) err
 			},
 		},
 		Mode:       stripe.String("subscription"),
-		SuccessURL: stripe.String(os.Getenv("STRIPE_SUCCESS_URL")),
-		CancelURL:  stripe.String(os.Getenv("STRIPE_CANCEL_URL")),
+		SuccessURL: stripe.String(getBaseURL() + "/billing?success=true"),
+		CancelURL:  stripe.String(getBaseURL() + "/pricing?canceled=true"),
 		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
 			Metadata: map[string]string{
 				"user_id": data.UserID,
@@ -98,7 +110,7 @@ func CreatePortalLink(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	// Create portal session
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(customerID),
-		ReturnURL: stripe.String(os.Getenv("HOST") + "/billing"),
+		ReturnURL: stripe.String(getBaseURL() + "/billing"),
 	}
 
 	ps, err := billingportal.New(params)
