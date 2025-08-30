@@ -174,9 +174,9 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 
 	if err != nil {
 		// Before creating new record, ensure no other active subscriptions exist (safeguard)
-		remainingActive, _ := app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", map[string]any{
+		remainingActive, _ := app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", "-created", 100, 0, map[string]any{
 			"user_id": userID,
-		}, 100, 0)
+		})
 		
 		if len(remainingActive) > 0 {
 			log.Printf("SAFEGUARD: Found %d remaining active subscriptions for user %s, deactivating them", len(remainingActive), userID)
