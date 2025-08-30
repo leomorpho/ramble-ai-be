@@ -140,14 +140,30 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 		"user_id": userID,
 	})
 	
-	if existingActive != nil && existingActive.GetString("stripe_subscription_id") != stripeSub.ID {
-		// User is switching plans - mark old subscription as cancelled
-		existingActive.Set("status", "cancelled")
-		existingActive.Set("canceled_at", time.Now())
-		if err := app.Save(existingActive); err != nil {
-			log.Printf("Failed to deactivate old subscription: %v", err)
+	// Get current Stripe price ID for comparison
+	var currentStripePriceID string
+	if stripeSub.Items != nil && len(stripeSub.Items.Data) > 0 {
+		currentStripePriceID = stripeSub.Items.Data[0].Price.ID
+	}
+	
+	if existingActive != nil {
+		existingStripePriceID := existingActive.GetString("stripe_price_id")
+		existingStripeSubID := existingActive.GetString("stripe_subscription_id")
+		
+		// Detect plan changes: either different subscription ID OR different price ID within same subscription
+		isPlanChange := (existingStripeSubID != stripeSub.ID) || 
+						(existingStripeSubID == stripeSub.ID && existingStripePriceID != currentStripePriceID)
+		
+		if isPlanChange {
+			// User is switching plans - mark old subscription as cancelled
+			existingActive.Set("status", "cancelled")
+			existingActive.Set("canceled_at", time.Now())
+			if err := app.Save(existingActive); err != nil {
+				log.Printf("Failed to deactivate old subscription: %v", err)
+			}
+			log.Printf("Deactivated old subscription for user %s (plan change detected: %s -> %s)", 
+				userID, existingStripePriceID, currentStripePriceID)
 		}
-		log.Printf("Deactivated old subscription for user %s", userID)
 	}
 
 	// Now find or create the subscription record for this Stripe subscription
@@ -157,6 +173,22 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	})
 
 	if err != nil {
+		// Before creating new record, ensure no other active subscriptions exist (safeguard)
+		remainingActive, _ := app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", map[string]any{
+			"user_id": userID,
+		}, 100, 0)
+		
+		if len(remainingActive) > 0 {
+			log.Printf("SAFEGUARD: Found %d remaining active subscriptions for user %s, deactivating them", len(remainingActive), userID)
+			for _, activeRecord := range remainingActive {
+				activeRecord.Set("status", "cancelled")
+				activeRecord.Set("canceled_at", time.Now())
+				if err := app.Save(activeRecord); err != nil {
+					log.Printf("Failed to deactivate remaining subscription: %v", err)
+				}
+			}
+		}
+		
 		// Create new record
 		record = core.NewRecord(collection)
 		log.Printf("Creating new subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
@@ -170,6 +202,9 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 		record.Set("plan_id", planID)
 	}
 	record.Set("stripe_subscription_id", stripeSub.ID)
+	if currentStripePriceID != "" {
+		record.Set("stripe_price_id", currentStripePriceID)
+	}
 	record.Set("status", mapStripeStatus(stripeSub.Status))
 	
 	// Log and set period dates with validation

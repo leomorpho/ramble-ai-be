@@ -212,10 +212,10 @@ func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 		})
 	}
 
-	// The webhook will handle updating our database, but we can return success immediately
+	// Stripe will send webhook to update our database - we just return success
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
-		"message": "Plan changed successfully",
+		"message": "Plan changed successfully - changes will be reflected shortly",
 		"stripe_subscription_id": updatedSub.ID,
 		"new_plan": data.PlanID,
 	})

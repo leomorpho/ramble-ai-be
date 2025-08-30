@@ -40,6 +40,12 @@ func main() {
 		if err := loadSchemaFromJSON(app); err != nil {
 			log.Printf("Warning: Failed to load schema: %v", err)
 		}
+		
+		// Ensure database constraints for subscription integrity
+		if err := ensureSubscriptionConstraints(app); err != nil {
+			log.Printf("Warning: Failed to create subscription constraints: %v", err)
+		}
+		
 		return nil
 	})
 
@@ -447,5 +453,24 @@ func createSuperuserIfNeeded(app *pocketbase.PocketBase) error {
 	}
 
 	log.Printf("Successfully created superuser account: %s", adminEmail)
+	return nil
+}
+
+// ensureSubscriptionConstraints adds database constraints to prevent multiple active subscriptions per user
+func ensureSubscriptionConstraints(app *pocketbase.PocketBase) error {
+	// Create a unique partial index on user_id where status = 'active'
+	// This prevents multiple active subscriptions for the same user at database level
+	
+	indexSQL := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_user_active_subscription 
+		ON user_subscriptions(user_id) 
+		WHERE status = 'active'
+	`
+	
+	if _, err := app.DB().NewQuery(indexSQL).Execute(); err != nil {
+		return err
+	}
+	
+	log.Println("Database constraint created: unique active subscription per user")
 	return nil
 }
