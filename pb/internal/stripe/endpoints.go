@@ -34,6 +34,17 @@ func getBaseURL() string {
 	return host
 }
 
+// getFrontendURL returns the frontend URL for redirects, falling back to localhost:5173 if FRONTEND_URL is not set
+func getFrontendURL() string {
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	// Ensure FRONTEND_URL doesn't have trailing slash
+	frontendURL = strings.TrimSuffix(frontendURL, "/")
+	return frontendURL
+}
+
 // CreateCheckoutSession handles the creation of Stripe checkout sessions
 func CreateCheckoutSession(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	var data CreateCheckoutSessionRequest
@@ -48,10 +59,7 @@ func CreateCheckoutSession(e *core.RequestEvent, app *pocketbase.PocketBase) err
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid plan ID"})
 	}
 
-	// Free plan doesn't need Stripe checkout
-	if plan.GetString("billing_interval") == "free" {
-		return e.JSON(http.StatusBadRequest, map[string]string{"error": "Cannot create checkout for free plan"})
-	}
+	// All plans (including free $0.00 plans) can go through Stripe checkout
 
 	stripePriceID := plan.GetString("stripe_price_id")
 	if stripePriceID == "" {
@@ -74,8 +82,8 @@ func CreateCheckoutSession(e *core.RequestEvent, app *pocketbase.PocketBase) err
 			},
 		},
 		Mode:       stripe.String("subscription"),
-		SuccessURL: stripe.String(getBaseURL() + "/billing?success=true"),
-		CancelURL:  stripe.String(getBaseURL() + "/pricing?canceled=true"),
+		SuccessURL: stripe.String(getFrontendURL() + "/pricing?success=true"),
+		CancelURL:  stripe.String(getFrontendURL() + "/pricing?canceled=true"),
 		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
 			Metadata: map[string]string{
 				"user_id": data.UserID,
@@ -101,16 +109,25 @@ func CreatePortalLink(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// Get Stripe customer ID directly for user
-	customerID, err := getStripeCustomerID(app, data.UserID)
+	// Check if user has an active subscription
+	_, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", map[string]any{
+		"user_id": data.UserID,
+	})
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		// No active subscription found, redirect to pricing page
+		return e.JSON(http.StatusOK, map[string]string{"url": getBaseURL() + "/pricing"})
 	}
 
-	// Create portal session
+	// Get or create Stripe customer ID for all users (including free plan users)
+	customerID, err := getOrCreateStripeCustomer(app, data.UserID)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create Stripe customer. Please contact support."})
+	}
+
+	// Create portal session for all users
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(customerID),
-		ReturnURL: stripe.String(getBaseURL() + "/billing"),
+		ReturnURL: stripe.String(getFrontendURL() + "/pricing"),
 	}
 
 	ps, err := billingportal.New(params)

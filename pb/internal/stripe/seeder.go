@@ -95,17 +95,15 @@ func createOrUpdatePlan(app *pocketbase.PocketBase, config PlanConfig) error {
 
 	var stripeProductID, stripePriceID string
 
-	// Create Stripe product and price for paid plans
-	if config.BillingInterval != "free" {
-		productID, priceID, err := createStripeProductAndPrice(config)
-		if err != nil {
-			log.Printf("Warning: Failed to create Stripe product/price for %s: %v", config.Name, err)
-			log.Printf("Creating plan in database without Stripe integration...")
-			// Continue to create the plan in database without Stripe integration
-		} else {
-			stripeProductID = productID
-			stripePriceID = priceID
-		}
+	// Create Stripe product and price for ALL plans including free ($0.00)
+	productID, priceID, err := createStripeProductAndPrice(config)
+	if err != nil {
+		log.Printf("Warning: Failed to create Stripe product/price for %s: %v", config.Name, err)
+		log.Printf("Creating plan in database without Stripe integration...")
+		// Continue to create the plan in database without Stripe integration
+	} else {
+		stripeProductID = productID
+		stripePriceID = priceID
 	}
 
 	// Create or update the plan in PocketBase
@@ -144,6 +142,11 @@ func createStripeProductAndPrice(config PlanConfig) (string, string, error) {
 	} else if config.BillingInterval == "year" {
 		recurringParams = &stripe.PriceRecurringParams{
 			Interval: stripe.String("year"),
+		}
+	} else if config.BillingInterval == "free" {
+		// Free plans are $0.00/month recurring (not one-time) for portal compatibility
+		recurringParams = &stripe.PriceRecurringParams{
+			Interval: stripe.String("month"),
 		}
 	}
 

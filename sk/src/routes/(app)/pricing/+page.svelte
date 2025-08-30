@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.ts';
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
-	import { createCheckoutSession, createPortalLink } from '$lib/stripe.ts';
+	import { createCheckoutSession } from '$lib/stripe.ts';
 	import { config } from '$lib/config.ts';
 	import { Loader2, Check, Crown, Zap } from 'lucide-svelte';
 	import { onMount } from 'svelte';
@@ -15,7 +15,6 @@
 	// let billingInterval = $state<'month' | 'year'>('month');
 	
 	// Dialog states
-	let showFreeDowngradeDialog = $state(false);
 	let showErrorDialog = $state(false);
 	let errorMessage = $state('');
 
@@ -29,17 +28,6 @@
 		if (!authStore.isLoggedIn) {
 			// Redirect to login
 			window.location.href = '/login?redirect=/pricing';
-			return;
-		}
-
-		const plan = subscriptionStore.getPlan(planId);
-		
-		// Handle free plan switching
-		if (plan?.billing_interval === 'free') {
-			if (subscriptionStore.isSubscribed) {
-				// User wants to downgrade to free - show confirmation dialog
-				showFreeDowngradeDialog = true;
-			}
 			return;
 		}
 
@@ -59,16 +47,6 @@
 		return subscriptionStore.isCurrentPlan(planId);
 	}
 
-	async function handleFreeDowngrade() {
-		showFreeDowngradeDialog = false;
-		try {
-			await createPortalLink();
-		} catch (error) {
-			console.error('Error accessing billing portal:', error);
-			errorMessage = 'Failed to access billing portal. Please try again.';
-			showErrorDialog = true;
-		}
-	}
 
 	function getButtonText(planId: string): string {
 		if (checkoutLoading === planId) return 'Processing...';
@@ -270,25 +248,6 @@
 	</div>
 </section>
 
-<!-- Free Plan Downgrade Confirmation Dialog -->
-<Dialog bind:open={showFreeDowngradeDialog}>
-	<DialogContent>
-		<DialogHeader>
-			<DialogTitle>Switch to Free Plan</DialogTitle>
-			<DialogDescription>
-				Switching to the Free plan will cancel your current subscription at the end of the billing period. You can manage this change in the billing portal.
-			</DialogDescription>
-		</DialogHeader>
-		<DialogFooter>
-			<Button variant="outline" onclick={() => showFreeDowngradeDialog = false}>
-				Cancel
-			</Button>
-			<Button onclick={handleFreeDowngrade}>
-				Continue to Billing Portal
-			</Button>
-		</DialogFooter>
-	</DialogContent>
-</Dialog>
 
 <!-- Error Dialog -->
 <Dialog bind:open={showErrorDialog}>

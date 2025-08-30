@@ -70,17 +70,9 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 			log.Printf("Error parsing webhook JSON: %v", err)
 			return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		if session.Mode == "subscription" && session.Subscription != nil {
-			// Retrieve the subscription to get full details
-			sub, err := subscription.Get(session.Subscription.ID, nil)
-			if err != nil {
-				log.Printf("Error retrieving subscription: %v", err)
-			} else {
-				if err := handleSubscriptionEvent(app, sub, "customer.subscription.created"); err != nil {
-					log.Printf("Error handling subscription from checkout: %v", err)
-				}
-			}
-		}
+		// Log checkout completion but don't update subscriptions yet
+		// Wait for invoice.payment_succeeded to confirm payment before updating user plans
+		log.Printf("Checkout session completed: %s (subscription: %v)", session.ID, session.Subscription != nil)
 
 	case "invoice.payment_failed":
 		var invoice stripe.Invoice
@@ -253,24 +245,16 @@ func handlePaymentSucceeded(app *pocketbase.PocketBase, invoice *stripe.Invoice)
 		return nil // Not a subscription invoice
 	}
 
-	// Get user ID from customer
-	userID, err := getUserIDFromCustomer(app, invoice.Customer.ID)
+	log.Printf("Payment succeeded for subscription: %s", invoice.Subscription.ID)
+
+	// Get the full subscription details from Stripe
+	sub, err := subscription.Get(invoice.Subscription.ID, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to retrieve subscription: %w", err)
 	}
 
-	// Update subscription status to active
-	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND stripe_subscription_id = {:sub_id}", map[string]any{
-		"user_id": userID,
-		"sub_id": invoice.Subscription.ID,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	record.Set("status", "active")
-	return app.Save(record)
+	// Handle the subscription creation/update now that payment is confirmed
+	return handleSubscriptionEvent(app, sub, "customer.subscription.created")
 }
 
 // mapStripeStatus maps Stripe subscription statuses to our internal statuses

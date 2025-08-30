@@ -203,6 +203,34 @@ func main() {
 		return se.Next()
 	})
 
+	// Add hook to assign free plan to new users
+	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
+		log.Printf("New user created: %s, assigning free plan...", e.Record.Id)
+		
+		// Create free plan subscription for the new user
+		err := stripehandlers.CreateFreePlanSubscription(app, e.Record.Id)
+		if err != nil {
+			log.Printf("Warning: Failed to create free plan for user %s: %v", e.Record.Id, err)
+			// Don't fail user registration if subscription creation fails
+		}
+		
+		return e.Next()
+	})
+
+	// Seed subscription plans on startup
+	app.OnBootstrap().BindFunc(func(be *core.BootstrapEvent) error {
+		if err := be.Next(); err != nil {
+			return err
+		}
+		
+		// Seed subscription plans after bootstrap
+		if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
+			log.Printf("Warning: Failed to seed subscription plans: %v", err)
+		}
+		
+		return nil
+	})
+
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
