@@ -427,7 +427,7 @@
 							<h4 class="text-lg font-semibold">{subscriptionPlan.name}</h4>
 							<p class="text-sm text-muted-foreground">
 								{subscriptionPlan.hours_per_month} hour{subscriptionPlan.hours_per_month !== 1 ? 's' : ''} per month
-								• ${(subscriptionPlan.price_cents / 100).toFixed(2)}/{subscriptionPlan.billing_interval}
+								• ${(subscriptionPlan.price_cents / 100).toFixed(2)} USD/{subscriptionPlan.billing_interval}
 							</p>
 							{#if usageData}
 								<div class="mt-2">

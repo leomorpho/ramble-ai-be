@@ -84,7 +84,7 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 			log.Printf("Error handling payment failure: %v", err)
 		}
 
-	case "invoice.payment_succeeded":
+	case "invoice.payment_succeeded", "invoice.payment.paid":
 		var invoice stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &invoice); err != nil {
 			log.Printf("Error parsing invoice webhook JSON: %v", err)
@@ -318,8 +318,19 @@ func handlePaymentSucceeded(app *pocketbase.PocketBase, invoice *stripe.Invoice)
 		return fmt.Errorf("failed to retrieve subscription: %w", err)
 	}
 
-	// Handle the subscription creation/update now that payment is confirmed
-	return handleSubscriptionEvent(app, sub, "customer.subscription.created")
+	// Check if subscription already exists in our database
+	existingRecord, err := app.FindFirstRecordByFilter("user_subscriptions", "stripe_subscription_id = {:sub_id}", map[string]any{
+		"sub_id": sub.ID,
+	})
+
+	// If subscription exists, this is an update (plan change), otherwise it's creation
+	eventType := "customer.subscription.created"
+	if existingRecord != nil {
+		eventType = "customer.subscription.updated"
+	}
+
+	log.Printf("Processing subscription %s as %s event", sub.ID, eventType)
+	return handleSubscriptionEvent(app, sub, eventType)
 }
 
 // mapStripeStatus maps Stripe subscription statuses to our internal statuses

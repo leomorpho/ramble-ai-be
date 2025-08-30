@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.ts';
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
-	import { createCheckoutSession } from '$lib/stripe.ts';
+	import { createCheckoutSession, changePlan } from '$lib/stripe.ts';
 	import { config } from '$lib/config.ts';
 	import { Loader2, Check, Crown, Zap, AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';
@@ -17,6 +17,8 @@
 	// Dialog states
 	let showErrorDialog = $state(false);
 	let errorMessage = $state('');
+	let showCancelDialog = $state(false);
+	let pendingCancelPlan = $state<string | null>(null);
 
 	// Subscription store is initialized in root layout
 	onMount(() => {
@@ -31,6 +33,17 @@
 			return;
 		}
 
+		const plan = subscriptionStore.getPlan(planId);
+		const isDowngradeToFree = plan?.billing_interval === 'free' && subscriptionStore.isSubscribed;
+		
+		// Show confirmation dialog for cancellation/downgrade to free
+		if (isDowngradeToFree) {
+			pendingCancelPlan = planId;
+			showCancelDialog = true;
+			return;
+		}
+
+		// For upgrades or new subscriptions, use checkout
 		checkoutLoading = planId;
 		try {
 			await createCheckoutSession(planId);
@@ -47,6 +60,30 @@
 		return subscriptionStore.isCurrentPlan(planId);
 	}
 
+	async function handleCancelConfirm() {
+		if (!pendingCancelPlan) return;
+		
+		checkoutLoading = pendingCancelPlan;
+		try {
+			await changePlan(pendingCancelPlan);
+			// Refresh subscription data to reflect the change
+			subscriptionStore.refresh();
+			showCancelDialog = false;
+			pendingCancelPlan = null;
+		} catch (error) {
+			console.error('Error changing plan:', error);
+			errorMessage = 'Failed to cancel subscription. Please try again.';
+			showErrorDialog = true;
+			showCancelDialog = false;
+		} finally {
+			checkoutLoading = null;
+		}
+	}
+
+	function handleCancelDecline() {
+		showCancelDialog = false;
+		pendingCancelPlan = null;
+	}
 
 	function getButtonText(planId: string): string {
 		if (checkoutLoading === planId) return 'Processing...';
@@ -54,7 +91,7 @@
 		
 		const plan = subscriptionStore.getPlan(planId);
 		if (plan?.billing_interval === 'free') {
-			return subscriptionStore.isSubscribed ? 'Switch to Free' : 'Select Free Plan';
+			return subscriptionStore.isSubscribed ? 'Cancel Subscription' : 'Select Free Plan';
 		}
 		
 		if (!authStore.isLoggedIn) return 'Sign Up to Subscribe';
@@ -165,14 +202,14 @@
 							
 							<div class="mb-4">
 								{#if plan.billing_interval === 'free'}
-									<div class="text-3xl font-bold">Free</div>
-									<div class="text-sm text-muted-foreground">Always free</div>
+									<div class="text-3xl font-bold">$0</div>
+									<div class="text-sm text-muted-foreground">No monthly fee</div>
 								{:else}
 									<div class="text-3xl font-bold">
 										{subscriptionStore.formatPrice(plan.price_cents)}
 									</div>
 									<div class="text-sm text-muted-foreground">
-										per {plan.billing_interval}
+										USD per {plan.billing_interval}
 									</div>
 								{/if}
 							</div>
@@ -287,6 +324,33 @@
 		<DialogFooter>
 			<Button onclick={() => showErrorDialog = false}>
 				OK
+			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>
+
+<!-- Cancel Subscription Dialog -->
+<Dialog bind:open={showCancelDialog}>
+	<DialogContent>
+		<DialogHeader>
+			<DialogTitle>Cancel Subscription</DialogTitle>
+			<DialogDescription>
+				Are you sure you want to cancel your subscription? You'll be moved to the Free plan and will lose access to premium features, but you can upgrade again anytime.
+			</DialogDescription>
+		</DialogHeader>
+		<DialogFooter class="gap-2">
+			<Button variant="outline" onclick={handleCancelDecline} disabled={checkoutLoading !== null}>
+				Keep Subscription
+			</Button>
+			<Button 
+				variant="destructive" 
+				onclick={handleCancelConfirm}
+				disabled={checkoutLoading !== null}
+			>
+				{#if checkoutLoading}
+					<Loader2 class="h-4 w-4 animate-spin mr-2" />
+				{/if}
+				Cancel Subscription
 			</Button>
 		</DialogFooter>
 	</DialogContent>
