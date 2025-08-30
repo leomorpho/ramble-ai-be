@@ -1,6 +1,9 @@
 package stripe
 
 import (
+	"fmt"
+	"time"
+	
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/stripe/stripe-go/v79"
@@ -74,4 +77,36 @@ func getUserIDFromCustomer(app *pocketbase.PocketBase, customerID string) (strin
 	}
 
 	return record.GetString("user_id"), nil
+}
+
+// validateAndFixTimestamps validates Unix timestamps and returns Go times
+// Returns false if timestamps are invalid (0 or end before start)
+func validateAndFixTimestamps(startUnix, endUnix int64) (time.Time, time.Time, bool) {
+	// Check for 1970 timestamps (invalid)
+	if startUnix <= 0 || endUnix <= 0 {
+		return time.Time{}, time.Time{}, false
+	}
+	
+	startTime := time.Unix(startUnix, 0)
+	endTime := time.Unix(endUnix, 0)
+	
+	// Check if end is after start
+	if !endTime.After(startTime) {
+		return time.Time{}, time.Time{}, false
+	}
+	
+	return startTime, endTime, true
+}
+
+// extractPriceFromSubscription safely extracts the price ID from a Stripe subscription
+func extractPriceFromSubscription(sub *stripe.Subscription) (string, error) {
+	if sub.Items == nil || len(sub.Items.Data) == 0 {
+		return "", fmt.Errorf("subscription has no items")
+	}
+	
+	if sub.Items.Data[0].Price == nil {
+		return "", fmt.Errorf("subscription item has no price")
+	}
+	
+	return sub.Items.Data[0].Price.ID, nil
 }
