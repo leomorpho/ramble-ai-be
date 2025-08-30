@@ -36,37 +36,40 @@ type UsageInfo struct {
 
 // CreateSubscriptionParams represents parameters for creating a subscription
 type CreateSubscriptionParams struct {
-	UserID                string
-	PlanID                string
-	StripeSubscriptionID  *string
-	StripePriceID         *string
-	Status                SubscriptionStatus
-	CurrentPeriodStart    time.Time
-	CurrentPeriodEnd      time.Time
-	CancelAtPeriodEnd     bool
-	CanceledAt            *time.Time
-	TrialEnd              *time.Time
+	UserID                   string
+	PlanID                   string
+	ProviderSubscriptionID   *string
+	ProviderPriceID          *string
+	PaymentProvider          *string
+	Status                   SubscriptionStatus
+	CurrentPeriodStart       time.Time
+	CurrentPeriodEnd         time.Time
+	CancelAtPeriodEnd        bool
+	CanceledAt               *time.Time
+	TrialEnd                 *time.Time
 }
 
 // UpdateSubscriptionParams represents parameters for updating a subscription
 type UpdateSubscriptionParams struct {
-	PlanID                *string
-	StripeSubscriptionID  *string
-	StripePriceID         *string
-	Status                *SubscriptionStatus
-	CurrentPeriodStart    *time.Time
-	CurrentPeriodEnd      *time.Time
-	CancelAtPeriodEnd     *bool
-	CanceledAt            *time.Time
-	TrialEnd              *time.Time
+	PlanID                   *string
+	ProviderSubscriptionID   *string
+	ProviderPriceID          *string
+	PaymentProvider          *string
+	Status                   *SubscriptionStatus
+	CurrentPeriodStart       *time.Time
+	CurrentPeriodEnd         *time.Time
+	CancelAtPeriodEnd        *bool
+	CanceledAt               *time.Time
+	TrialEnd                 *time.Time
 }
 
 // SubscriptionQuery represents query parameters for finding subscriptions
 type SubscriptionQuery struct {
-	UserID               string
-	Status               *SubscriptionStatus
-	StripeSubscriptionID *string
-	PlanID               *string
+	UserID                 string
+	Status                 *SubscriptionStatus
+	ProviderSubscriptionID *string
+	PlanID                 *string
+	PaymentProvider        *string
 }
 
 // PlanChangeRequest represents a request to change subscription plans

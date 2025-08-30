@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.js';
 	import { authStore } from '$lib/stores/authClient.svelte.js';
-	import { createPortalLink, formatPrice } from '$lib/stripe.js';
+	import { createPortalLink, formatPrice } from '$lib/payment.js';
 	import { config } from '$lib/config.js';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';

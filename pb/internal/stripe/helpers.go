@@ -39,13 +39,13 @@ func getOrCreateStripeCustomer(app *pocketbase.PocketBase, userID string) (strin
 	}
 
 	// Save customer record in PocketBase
-	collection, err := app.FindCollectionByNameOrId("stripe_customers")
+	collection, err := app.FindCollectionByNameOrId("payment_customers")
 	if err != nil {
 		return "", err
 	}
 
 	record := core.NewRecord(collection)
-	record.Set("stripe_customer_id", stripeCustomer.ID)
+	record.Set("provider_customer_id", stripeCustomer.ID)
 	record.Set("user_id", userID)
 
 	if err := app.Save(record); err != nil {
@@ -57,19 +57,19 @@ func getOrCreateStripeCustomer(app *pocketbase.PocketBase, userID string) (strin
 
 // getStripeCustomerID retrieves the Stripe customer ID for a given user ID
 func getStripeCustomerID(app *pocketbase.PocketBase, userID string) (string, error) {
-	record, err := app.FindFirstRecordByFilter("stripe_customers", "user_id = {:user_id}", map[string]any{
+	record, err := app.FindFirstRecordByFilter("payment_customers", "user_id = {:user_id}", map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
 		return "", err
 	}
 
-	return record.GetString("stripe_customer_id"), nil
+	return record.GetString("provider_customer_id"), nil
 }
 
 // getUserIDFromCustomer retrieves the user ID associated with a Stripe customer ID
 func getUserIDFromCustomer(app *pocketbase.PocketBase, customerID string) (string, error) {
-	record, err := app.FindFirstRecordByFilter("stripe_customers", "stripe_customer_id = {:customer_id}", map[string]any{
+	record, err := app.FindFirstRecordByFilter("payment_customers", "provider_customer_id = {:customer_id}", map[string]any{
 		"customer_id": customerID,
 	})
 	if err != nil {

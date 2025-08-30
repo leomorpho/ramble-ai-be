@@ -68,7 +68,7 @@ func CreateCheckoutSession(e *core.RequestEvent, app *pocketbase.PocketBase) err
 
 	// All plans (including free $0.00 plans) can go through Stripe checkout
 
-	stripePriceID := plan.GetString("stripe_price_id")
+	stripePriceID := plan.GetString("provider_price_id")
 	if stripePriceID == "" {
 		return e.JSON(http.StatusInternalServerError, map[string]string{"error": "Plan has no Stripe price ID"})
 	}
@@ -170,13 +170,13 @@ func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	}
 
 	// Get Stripe subscription ID
-	stripeSubID := currentSub.GetString("stripe_subscription_id")
+	stripeSubID := currentSub.GetString("provider_subscription_id")
 	if stripeSubID == "" {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "No Stripe subscription ID found"})
 	}
 
 	// Update the Stripe subscription to the new plan
-	stripePriceID := targetPlan.GetString("stripe_price_id")
+	stripePriceID := targetPlan.GetString("provider_price_id")
 	
 	// Get the current subscription to find the subscription item ID to update
 	currentStripeSub, err := subscription.Get(stripeSubID, nil)
@@ -216,7 +216,7 @@ func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Plan changed successfully - changes will be reflected shortly",
-		"stripe_subscription_id": updatedSub.ID,
+		"provider_subscription_id": updatedSub.ID,
 		"new_plan": data.PlanID,
 	})
 }

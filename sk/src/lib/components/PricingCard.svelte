@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check, Loader2 } from 'lucide-svelte';
-	import { formatPrice } from '$lib/stripe.js';
+	import { formatPrice } from '$lib/payment.js';
 
 	interface Price {
 		id: string;

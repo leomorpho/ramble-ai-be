@@ -9,8 +9,9 @@ interface SubscriptionPlan {
 	currency: string;
 	billing_interval: 'free' | 'month' | 'year';
 	hours_per_month: number;
-	stripe_price_id?: string;
-	stripe_product_id?: string;
+	provider_price_id?: string;
+	provider_product_id?: string;
+	payment_provider: 'stripe' | 'paddle' | 'polar';
 	is_active: boolean;
 	display_order: number;
 	features: string[];
@@ -20,7 +21,9 @@ interface UserSubscription {
 	id: string;
 	user_id: string;
 	plan_id: string;
-	stripe_subscription_id?: string;
+	provider_subscription_id?: string;
+	provider_price_id?: string;
+	payment_provider?: 'stripe' | 'paddle' | 'polar';
 	status: 'active' | 'cancelled' | 'past_due' | 'trialing';
 	current_period_start: string;
 	current_period_end: string;
@@ -351,9 +354,9 @@ class SubscriptionStore {
 	}
 
 	// Get formatted price
-	formatPrice(priceCents: number, currency = 'usd'): string {
-		// Handle the 1 cent workaround for free plans
-		if (priceCents <= 1) {
+	formatPrice(priceCents: number, currency = 'usd', billingInterval?: string): string {
+		// Free plans (either by billing_interval or price)
+		if (billingInterval === 'free' || priceCents === 0) {
 			return 'Free';
 		}
 		return new Intl.NumberFormat('en-US', {

@@ -59,6 +59,7 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	service := subscriptionService.NewService(repo)
 
 	// Handle the event using the subscription service
+	// IMPORTANT: When adding/removing webhook events, update README.md payment provider section
 	switch event.Type {
 	case "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted":
 		var sub stripe.Subscription
@@ -90,7 +91,7 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 			log.Printf("Error handling payment failure: %v", err)
 		}
 
-	case "invoice.payment_succeeded", "invoice.payment.paid":
+	case "invoice.payment_succeeded", "invoice.payment.paid", "invoice_payment.paid":
 		var invoice stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &invoice); err != nil {
 			log.Printf("Error parsing invoice webhook JSON: %v", err)
@@ -121,7 +122,7 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	var planID string
 	if stripeSub.Items != nil && len(stripeSub.Items.Data) > 0 {
 		stripePriceID := stripeSub.Items.Data[0].Price.ID
-		plan, err := app.FindFirstRecordByFilter("subscription_plans", "stripe_price_id = {:price_id}", map[string]any{
+		plan, err := app.FindFirstRecordByFilter("subscription_plans", "provider_price_id = {:price_id}", map[string]any{
 			"price_id": stripePriceID,
 		})
 		if err != nil {
@@ -153,8 +154,8 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	}
 	
 	if existingActive != nil {
-		existingStripePriceID := existingActive.GetString("stripe_price_id")
-		existingStripeSubID := existingActive.GetString("stripe_subscription_id")
+		existingStripePriceID := existingActive.GetString("provider_price_id")
+		existingStripeSubID := existingActive.GetString("provider_subscription_id")
 		
 		// Detect plan changes: either different subscription ID OR different price ID within same subscription
 		isPlanChange := (existingStripeSubID != stripeSub.ID) || 
@@ -173,7 +174,7 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	}
 
 	// Now find or create the subscription record for this Stripe subscription
-	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND stripe_subscription_id = {:sub_id}", map[string]any{
+	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND provider_subscription_id = {:sub_id}", map[string]any{
 		"user_id": userID,
 		"sub_id": stripeSub.ID,
 	})
@@ -207,9 +208,9 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	if planID != "" {
 		record.Set("plan_id", planID)
 	}
-	record.Set("stripe_subscription_id", stripeSub.ID)
+	record.Set("provider_subscription_id", stripeSub.ID)
 	if currentStripePriceID != "" {
-		record.Set("stripe_price_id", currentStripePriceID)
+		record.Set("provider_price_id", currentStripePriceID)
 	}
 	record.Set("status", mapStripeStatus(stripeSub.Status))
 	
@@ -258,7 +259,7 @@ func handleSubscriptionCancellation(app *pocketbase.PocketBase, userID string, s
 	}
 
 	// Find user's current subscription
-	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND stripe_subscription_id = {:sub_id}", map[string]any{
+	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND provider_subscription_id = {:sub_id}", map[string]any{
 		"user_id": userID,
 		"sub_id": stripeSub.ID,
 	})
@@ -274,7 +275,7 @@ func handleSubscriptionCancellation(app *pocketbase.PocketBase, userID string, s
 	oneYearFromNow := now.AddDate(1, 0, 0)
 
 	record.Set("plan_id", freePlan.Id)
-	record.Set("stripe_subscription_id", nil) // Remove Stripe subscription ID
+	record.Set("provider_subscription_id", nil) // Remove Stripe subscription ID
 	record.Set("status", "active")
 	record.Set("current_period_start", now)
 	record.Set("current_period_end", oneYearFromNow)
@@ -297,7 +298,7 @@ func handlePaymentFailed(app *pocketbase.PocketBase, invoice *stripe.Invoice) er
 	}
 
 	// Update subscription status to past_due
-	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND stripe_subscription_id = {:sub_id}", map[string]any{
+	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND provider_subscription_id = {:sub_id}", map[string]any{
 		"user_id": userID,
 		"sub_id": invoice.Subscription.ID,
 	})
@@ -325,7 +326,7 @@ func handlePaymentSucceeded(app *pocketbase.PocketBase, invoice *stripe.Invoice)
 	}
 
 	// Check if subscription already exists in our database
-	existingRecord, err := app.FindFirstRecordByFilter("user_subscriptions", "stripe_subscription_id = {:sub_id}", map[string]any{
+	existingRecord, err := app.FindFirstRecordByFilter("user_subscriptions", "provider_subscription_id = {:sub_id}", map[string]any{
 		"sub_id": sub.ID,
 	})
 

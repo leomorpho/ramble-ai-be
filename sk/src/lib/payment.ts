@@ -11,7 +11,7 @@ export async function createCheckoutSession(planId: string) {
 		throw new Error('User must be logged in to create checkout session');
 	}
 
-	const response = await fetch(`${pb.baseUrl}/create-checkout-session`, {
+	const response = await fetch(`${pb.baseUrl}/api/payment/checkout`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -29,7 +29,7 @@ export async function createCheckoutSession(planId: string) {
 
 	const { url } = await response.json();
 	
-	// Redirect to Stripe checkout
+	// Redirect to payment checkout
 	if (url) {
 		window.location.href = url;
 	}
@@ -46,7 +46,7 @@ export async function createPortalLink() {
 		throw new Error('User must be logged in to access billing portal');
 	}
 
-	const response = await fetch(`${pb.baseUrl}/create-portal-link`, {
+	const response = await fetch(`${pb.baseUrl}/api/payment/portal`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -63,7 +63,7 @@ export async function createPortalLink() {
 
 	const { url } = await response.json();
 	
-	// Redirect to Stripe billing portal
+	// Redirect to billing portal
 	if (url) {
 		window.location.href = url;
 	}
@@ -80,7 +80,7 @@ export async function changePlan(planId: string) {
 		throw new Error('User must be logged in to change plan');
 	}
 
-	const response = await fetch(`${pb.baseUrl}/change-plan`, {
+	const response = await fetch(`${pb.baseUrl}/api/payment/change-plan`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',

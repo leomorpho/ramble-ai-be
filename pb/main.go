@@ -46,6 +46,8 @@ func main() {
 			log.Printf("Warning: Failed to create subscription constraints: %v", err)
 		}
 		
+		// Note: Subscription user seeding moved to OnServe to run after development user creation
+		
 		return nil
 	})
 
@@ -77,6 +79,7 @@ func main() {
 		se.Server.ReadTimeout = 300 * time.Second // 5 minutes for large files
 		se.Server.WriteTimeout = 300 * time.Second
 		
+		
 		// IMPORTANT: Configure body size limits BEFORE default middleware
 		// PocketBase's default body limit is 32MB, we need to bypass this for audio uploads
 		
@@ -94,7 +97,7 @@ func main() {
 				log.Printf("Warning: Failed to seed development data: %v", err)
 			}
 
-			// Seed subscription plans
+			// Seed subscription plans after users are created
 			if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
 				log.Printf("Warning: Failed to seed subscription plans: %v", err)
 			}
@@ -111,7 +114,29 @@ func main() {
 		}
 
 
-		// Stripe routes
+		// Payment routes (provider-agnostic)
+		se.Router.POST("/api/payment/checkout", func(e *core.RequestEvent) error {
+			// Default to Stripe for now, but can be extended to support multiple providers
+			return stripehandlers.CreateCheckoutSession(e, app)
+		})
+
+		se.Router.POST("/api/payment/portal", func(e *core.RequestEvent) error {
+			// Default to Stripe for now, but can be extended to support multiple providers
+			return stripehandlers.CreatePortalLink(e, app)
+		})
+
+		se.Router.POST("/api/payment/change-plan", func(e *core.RequestEvent) error {
+			// Default to Stripe for now, but can be extended to support multiple providers
+			return stripehandlers.ChangePlan(e, app)
+		})
+
+		// Payment webhook routes
+		// IMPORTANT: When adding/removing webhook endpoints, update README.md payment provider section
+		se.Router.POST("/api/webhooks/stripe", func(e *core.RequestEvent) error {
+			return stripehandlers.HandleWebhook(e, app)
+		})
+
+		// Legacy Stripe routes (maintain backward compatibility)
 		se.Router.POST("/create-checkout-session", func(e *core.RequestEvent) error {
 			return stripehandlers.CreateCheckoutSession(e, app)
 		})
@@ -227,19 +252,6 @@ func main() {
 		return e.Next()
 	})
 
-	// Seed subscription plans on startup
-	app.OnBootstrap().BindFunc(func(be *core.BootstrapEvent) error {
-		if err := be.Next(); err != nil {
-			return err
-		}
-		
-		// Seed subscription plans after bootstrap
-		if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
-			log.Printf("Warning: Failed to seed subscription plans: %v", err)
-		}
-		
-		return nil
-	})
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)

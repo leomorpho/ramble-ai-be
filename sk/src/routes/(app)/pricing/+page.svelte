@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.ts';
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
-	import { createCheckoutSession, changePlan } from '$lib/stripe.ts';
+	import { createCheckoutSession, changePlan } from '$lib/payment.ts';
 	import { config } from '$lib/config.ts';
 	import { Loader2, Check, Crown, Zap, AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';

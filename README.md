@@ -108,9 +108,48 @@ HOST=http://localhost:8090
 DEVELOPMENT=true
 ```
 
-**Note**: Stripe redirect URLs are dynamically constructed using `HOST + route paths`:
+### Payment Provider Integration
+
+The application uses a provider-agnostic payment system. Currently, Stripe is the primary provider.
+
+#### Stripe Configuration
+
+**Webhook Endpoints:**
+- Primary: `{HOST}/api/webhooks/stripe`
+- Legacy: `{HOST}/stripe` (maintained for backward compatibility)
+
+**Required Webhook Events:**
+- `customer.subscription.created`
+- `customer.subscription.updated` 
+- `customer.subscription.deleted`
+- `checkout.session.completed`
+- `invoice.payment_failed`
+- `invoice.payment_succeeded`
+- `invoice.payment.paid`
+- `invoice_payment.paid`
+
+**Payment Endpoints:**
+- Checkout: `POST /api/payment/checkout`
+- Customer Portal: `POST /api/payment/portal`
+- Plan Change: `POST /api/payment/change-plan`
+- Switch to Free: `POST /api/subscription/switch-to-free`
+
+**Redirect URLs:**
+Dynamically constructed using `HOST + route paths`:
 - Success URL: `{HOST}/pricing?success=true`  
 - Cancel URL: `{HOST}/pricing?canceled=true`
+- Portal Return URL: `{HOST}/pricing`
+
+#### Adding New Payment Providers
+
+To add support for additional providers (Paddle, Polar, etc.):
+
+1. Implement the `PaymentProvider` interface in `internal/payment/`
+2. Add provider-specific webhook endpoints to `main.go`
+3. Update the database schema to support the new provider
+4. Update this README with the new provider's configuration
+
+**Note**: When webhook endpoints or events are modified, update this README section.
 
 ## 🧪 Testing
 

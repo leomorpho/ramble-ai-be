@@ -1724,7 +1724,7 @@
         "createRule": null,
         "updateRule": null,
         "deleteRule": null,
-        "name": "stripe_customers",
+        "name": "payment_customers",
         "type": "base",
         "fields": [
             {
@@ -1747,7 +1747,7 @@
                 "id": "text1888339527",
                 "max": 0,
                 "min": 0,
-                "name": "stripe_customer_id",
+                "name": "provider_customer_id",
                 "pattern": "",
                 "presentable": false,
                 "primaryKey": false,
@@ -1770,8 +1770,8 @@
             }
         ],
         "indexes": [
-            "CREATE UNIQUE INDEX `idx_customers_stripe_customer_id` ON `stripe_customers` (stripe_customer_id)",
-            "CREATE UNIQUE INDEX `idx_customers_user_id` ON `stripe_customers` (user_id)"
+            "CREATE UNIQUE INDEX `idx_customers_provider_customer_id` ON `payment_customers` (provider_customer_id)",
+            "CREATE UNIQUE INDEX `idx_customers_user_id` ON `payment_customers` (user_id)"
         ],
         "system": false
     },
@@ -1821,7 +1821,7 @@
                 "name": "price_cents",
                 "onlyInt": false,
                 "presentable": false,
-                "required": true,
+                "required": false,
                 "system": false,
                 "type": "number"
             },
@@ -1872,7 +1872,7 @@
                 "id": "text2337479636",
                 "max": 255,
                 "min": 0,
-                "name": "stripe_price_id",
+                "name": "provider_price_id",
                 "pattern": "",
                 "presentable": false,
                 "primaryKey": false,
@@ -1886,13 +1886,28 @@
                 "id": "text1049280722",
                 "max": 255,
                 "min": 0,
-                "name": "stripe_product_id",
+                "name": "provider_product_id",
                 "pattern": "",
                 "presentable": false,
                 "primaryKey": false,
                 "required": false,
                 "system": false,
                 "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "select9876543210",
+                "maxSelect": 1,
+                "name": "payment_provider",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "stripe",
+                    "paddle",
+                    "polar"
+                ]
             },
             {
                 "hidden": false,
@@ -2125,13 +2140,42 @@
                 "id": "text3051075425",
                 "max": 255,
                 "min": 0,
-                "name": "stripe_subscription_id",
+                "name": "provider_subscription_id",
                 "pattern": "",
                 "presentable": false,
                 "primaryKey": false,
                 "required": false,
                 "system": false,
                 "type": "text"
+            },
+            {
+                "autogeneratePattern": "",
+                "hidden": false,
+                "id": "text1234567890",
+                "max": 255,
+                "min": 0,
+                "name": "provider_price_id",
+                "pattern": "",
+                "presentable": false,
+                "primaryKey": false,
+                "required": false,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "select1234567890",
+                "maxSelect": 1,
+                "name": "payment_provider",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "stripe",
+                    "paddle",
+                    "polar"
+                ]
             },
             {
                 "hidden": false,

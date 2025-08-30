@@ -19,13 +19,13 @@ type Repository interface {
 	// Query operations
 	FindSubscription(query SubscriptionQuery) (*core.Record, error)
 	FindActiveSubscription(userID string) (*core.Record, error)
-	FindSubscriptionByStripeID(stripeSubID string) (*core.Record, error)
+	FindSubscriptionByProviderID(providerSubID string) (*core.Record, error)
 	FindAllUserSubscriptions(userID string) ([]*core.Record, error)
 	FindActiveSubscriptionsCount(userID string) (int, error)
 
 	// Plan operations
 	GetPlan(planID string) (*core.Record, error)
-	GetPlanByStripePrice(stripePriceID string) (*core.Record, error)
+	GetPlanByProviderPrice(providerPriceID string) (*core.Record, error)
 	GetFreePlan() (*core.Record, error)
 	GetAllPlans() ([]*core.Record, error)
 	GetAvailableUpgrades(currentPlanID string) ([]*core.Record, error)
@@ -60,11 +60,14 @@ func (r *PocketBaseRepository) CreateSubscription(params CreateSubscriptionParam
 	record.Set("current_period_end", params.CurrentPeriodEnd)
 	record.Set("cancel_at_period_end", params.CancelAtPeriodEnd)
 
-	if params.StripeSubscriptionID != nil {
-		record.Set("stripe_subscription_id", *params.StripeSubscriptionID)
+	if params.ProviderSubscriptionID != nil {
+		record.Set("provider_subscription_id", *params.ProviderSubscriptionID)
 	}
-	if params.StripePriceID != nil {
-		record.Set("stripe_price_id", *params.StripePriceID)
+	if params.ProviderPriceID != nil {
+		record.Set("provider_price_id", *params.ProviderPriceID)
+	}
+	if params.PaymentProvider != nil {
+		record.Set("payment_provider", *params.PaymentProvider)
 	}
 	if params.CanceledAt != nil {
 		record.Set("canceled_at", *params.CanceledAt)
@@ -90,11 +93,14 @@ func (r *PocketBaseRepository) UpdateSubscription(subscriptionID string, params 
 	if params.PlanID != nil {
 		record.Set("plan_id", *params.PlanID)
 	}
-	if params.StripeSubscriptionID != nil {
-		record.Set("stripe_subscription_id", *params.StripeSubscriptionID)
+	if params.ProviderSubscriptionID != nil {
+		record.Set("provider_subscription_id", *params.ProviderSubscriptionID)
 	}
-	if params.StripePriceID != nil {
-		record.Set("stripe_price_id", *params.StripePriceID)
+	if params.ProviderPriceID != nil {
+		record.Set("provider_price_id", *params.ProviderPriceID)
+	}
+	if params.PaymentProvider != nil {
+		record.Set("payment_provider", *params.PaymentProvider)
 	}
 	if params.Status != nil {
 		record.Set("status", string(*params.Status))
@@ -154,9 +160,9 @@ func (r *PocketBaseRepository) FindSubscription(query SubscriptionQuery) (*core.
 		filter += " AND status = {:status}"
 		params["status"] = string(*query.Status)
 	}
-	if query.StripeSubscriptionID != nil {
-		filter += " AND stripe_subscription_id = {:stripe_sub_id}"
-		params["stripe_sub_id"] = *query.StripeSubscriptionID
+	if query.ProviderSubscriptionID != nil {
+		filter += " AND provider_subscription_id = {:stripe_sub_id}"
+		params["stripe_sub_id"] = *query.ProviderSubscriptionID
 	}
 	if query.PlanID != nil {
 		filter += " AND plan_id = {:plan_id}"
@@ -180,9 +186,9 @@ func (r *PocketBaseRepository) FindActiveSubscription(userID string) (*core.Reco
 	return r.FindSubscription(query)
 }
 
-// FindSubscriptionByStripeID finds a subscription by Stripe subscription ID
-func (r *PocketBaseRepository) FindSubscriptionByStripeID(stripeSubID string) (*core.Record, error) {
-	record, err := r.app.FindFirstRecordByFilter("user_subscriptions", "stripe_subscription_id = {:stripe_sub_id}", map[string]any{
+// FindSubscriptionByProviderID finds a subscription by Stripe subscription ID
+func (r *PocketBaseRepository) FindSubscriptionByProviderID(stripeSubID string) (*core.Record, error) {
+	record, err := r.app.FindFirstRecordByFilter("user_subscriptions", "provider_subscription_id = {:stripe_sub_id}", map[string]any{
 		"stripe_sub_id": stripeSubID,
 	})
 	if err != nil {
@@ -204,7 +210,7 @@ func (r *PocketBaseRepository) FindAllUserSubscriptions(userID string) ([]*core.
 
 // FindActiveSubscriptionsCount counts active subscriptions for a user
 func (r *PocketBaseRepository) FindActiveSubscriptionsCount(userID string) (int, error) {
-	records, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", "-created", 100, 0, map[string]any{
+	records, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -222,9 +228,9 @@ func (r *PocketBaseRepository) GetPlan(planID string) (*core.Record, error) {
 	return record, nil
 }
 
-// GetPlanByStripePrice retrieves a plan by Stripe price ID
-func (r *PocketBaseRepository) GetPlanByStripePrice(stripePriceID string) (*core.Record, error) {
-	record, err := r.app.FindFirstRecordByFilter("subscription_plans", "stripe_price_id = {:price_id}", map[string]any{
+// GetPlanByProviderPrice retrieves a plan by Stripe price ID
+func (r *PocketBaseRepository) GetPlanByProviderPrice(stripePriceID string) (*core.Record, error) {
+	record, err := r.app.FindFirstRecordByFilter("subscription_plans", "provider_price_id = {:price_id}", map[string]any{
 		"price_id": stripePriceID,
 	})
 	if err != nil {
@@ -260,7 +266,7 @@ func (r *PocketBaseRepository) GetAvailableUpgrades(currentPlanID string) ([]*co
 
 	currentHoursLimit := currentPlan.GetFloat("hours_per_month")
 
-	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true AND hours_per_month > {:current_hours}", "+display_order", 0, 0, map[string]any{
+	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true && hours_per_month > {:current_hours}", "+display_order", 0, 0, map[string]any{
 		"current_hours": currentHoursLimit,
 	})
 	if err != nil {
@@ -271,7 +277,7 @@ func (r *PocketBaseRepository) GetAvailableUpgrades(currentPlanID string) ([]*co
 
 // DeactivateAllUserSubscriptions marks all user subscriptions as cancelled
 func (r *PocketBaseRepository) DeactivateAllUserSubscriptions(userID string) error {
-	subscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", "-created", 100, 0, map[string]any{
+	subscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -292,7 +298,7 @@ func (r *PocketBaseRepository) DeactivateAllUserSubscriptions(userID string) err
 
 // CleanupDuplicateSubscriptions ensures only one active subscription per user
 func (r *PocketBaseRepository) CleanupDuplicateSubscriptions(userID string) error {
-	activeSubscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", "-created", 100, 0, map[string]any{
+	activeSubscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {

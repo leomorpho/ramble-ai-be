@@ -28,10 +28,22 @@ type PlanConfig struct {
 // SeedSubscriptionPlans creates Stripe products/prices and seeds the database
 // This should only run in development or during initial setup
 func SeedSubscriptionPlans(app *pocketbase.PocketBase) error {
+	log.Println("🔍 [SEEDER DEBUG] Starting SeedSubscriptionPlans...")
+	
 	// Safety check - only run in development or when explicitly requested
-	if os.Getenv("DEVELOPMENT") != "true" {
+	devMode := os.Getenv("DEVELOPMENT")
+	log.Printf("🔍 [SEEDER DEBUG] DEVELOPMENT env var: '%s'", devMode)
+	if devMode != "true" {
 		log.Println("Skipping subscription seeding - not in development mode")
 		return nil
+	}
+
+	log.Println("🌱 [SEEDER DEBUG] Development mode confirmed, proceeding with seeding...")
+	
+	// Verify database state before seeding
+	if err := verifyDatabaseState(app); err != nil {
+		log.Printf("❌ [SEEDER DEBUG] Database state verification failed: %v", err)
+		return err
 	}
 
 	log.Println("🌱 Seeding subscription plans...")
@@ -80,14 +92,9 @@ func SeedSubscriptionPlans(app *pocketbase.PocketBase) error {
 		log.Printf("Warning: Failed to cleanup duplicate subscriptions: %v", err)
 	}
 
-	// Seed all existing users with Free plan subscriptions
-	if err := seedExistingUsersWithFreePlan(app); err != nil {
-		log.Printf("Warning: Failed to seed existing users with free plan: %v", err)
-	}
-
-	// Create Pro membership for bob@test.com dated 6 months ago (development only)
-	if err := createBobProMembership(app); err != nil {
-		log.Printf("Warning: Failed to create Bob's Pro membership: %v", err)
+	// Seed all existing users with Pro plan subscriptions (development only)
+	if err := seedExistingUsersWithProPlan(app); err != nil {
+		log.Printf("Warning: Failed to seed existing users with Pro plan: %v", err)
 	}
 
 	log.Println("🌱 Subscription seeding completed!")
@@ -100,15 +107,19 @@ func createOrUpdatePlan(app *pocketbase.PocketBase, config PlanConfig) error {
 
 	var stripeProductID, stripePriceID string
 
-	// Create Stripe product and price for ALL plans including free ($0.00)
-	productID, priceID, err := createStripeProductAndPrice(config)
-	if err != nil {
-		log.Printf("Warning: Failed to create Stripe product/price for %s: %v", config.Name, err)
-		log.Printf("Creating plan in database without Stripe integration...")
-		// Continue to create the plan in database without Stripe integration
+	// Only create Stripe product/price for paid plans (not free plans)
+	if config.BillingInterval != "free" {
+		productID, priceID, err := createStripeProductAndPrice(config)
+		if err != nil {
+			log.Printf("Warning: Failed to create Stripe product/price for %s: %v", config.Name, err)
+			log.Printf("Creating plan in database without Stripe integration...")
+			// Continue to create the plan in database without Stripe integration
+		} else {
+			stripeProductID = productID
+			stripePriceID = priceID
+		}
 	} else {
-		stripeProductID = productID
-		stripePriceID = priceID
+		log.Printf("Skipping Stripe integration for free plan: %s", config.Name)
 	}
 
 	// Create or update the plan in PocketBase
@@ -147,11 +158,6 @@ func createStripeProductAndPrice(config PlanConfig) (string, string, error) {
 	} else if config.BillingInterval == "year" {
 		recurringParams = &stripe.PriceRecurringParams{
 			Interval: stripe.String("year"),
-		}
-	} else if config.BillingInterval == "free" {
-		// Free plans are $0.00/month recurring (not one-time) for portal compatibility
-		recurringParams = &stripe.PriceRecurringParams{
-			Interval: stripe.String("month"),
 		}
 	}
 
@@ -201,18 +207,8 @@ func upsertSubscriptionPlan(app *pocketbase.PocketBase, config PlanConfig, strip
 	// Set all fields - ensure price_cents is always set, even for free plans
 	record.Set("name", config.Name)
 	
-	// Handle PocketBase's quirk where 0 is treated as "blank" for required fields
-	// For free plans, use 0.01 (1 cent) instead of 0 to avoid validation error
-	var priceCents int64
-	if config.BillingInterval == "free" && config.PriceCents == 0 {
-		priceCents = 1 // Use 1 cent instead of 0 for free plans to avoid PocketBase validation
-		log.Printf("Using 1 cent instead of 0 for free plan: %s", config.Name)
-	} else {
-		priceCents = config.PriceCents
-	}
-	
-	log.Printf("Setting price_cents for %s to: %d (type: %T)", config.Name, priceCents, priceCents)
-	record.Set("price_cents", priceCents)
+	// Set price_cents directly - free plans have price 0
+	record.Set("price_cents", config.PriceCents)
 	
 	record.Set("currency", "usd")
 	record.Set("billing_interval", config.BillingInterval)
@@ -221,11 +217,14 @@ func upsertSubscriptionPlan(app *pocketbase.PocketBase, config PlanConfig, strip
 	record.Set("display_order", config.DisplayOrder)
 
 	if stripeProductID != "" {
-		record.Set("stripe_product_id", stripeProductID)
+		record.Set("provider_product_id", stripeProductID)
 	}
 	if stripePriceID != "" {
-		record.Set("stripe_price_id", stripePriceID)
+		record.Set("provider_price_id", stripePriceID)
 	}
+	
+	// Set payment provider - default to Stripe for all plans
+	record.Set("payment_provider", "stripe")
 
 	// Convert features to JSON
 	if featuresJSON, err := json.Marshal(config.Features); err == nil {
@@ -240,29 +239,39 @@ func upsertSubscriptionPlan(app *pocketbase.PocketBase, config PlanConfig, strip
 	return nil
 }
 
-// seedExistingUsersWithFreePlan creates free plan subscriptions for all existing users
-func seedExistingUsersWithFreePlan(app *pocketbase.PocketBase) error {
-	log.Println("Seeding existing users with Free plan subscriptions...")
+// seedExistingUsersWithProPlan creates Pro plan subscriptions for all existing users
+func seedExistingUsersWithProPlan(app *pocketbase.PocketBase) error {
+	log.Println("🔍 [USER SEEDER DEBUG] Starting seedExistingUsersWithProPlan...")
 
-	// Get the Free plan
-	freePlan, err := app.FindFirstRecordByFilter("subscription_plans", "billing_interval = 'free'", map[string]any{})
+	// Get the Pro Monthly plan
+	log.Println("🔍 [USER SEEDER DEBUG] Looking for Pro Monthly plan...")
+	proPlan, err := app.FindFirstRecordByFilter("subscription_plans", "name = 'Pro Monthly'", map[string]any{})
 	if err != nil {
-		return fmt.Errorf("failed to find free plan: %w", err)
+		log.Printf("❌ [USER SEEDER DEBUG] Failed to find Pro Monthly plan: %v", err)
+		return fmt.Errorf("failed to find Pro Monthly plan: %w", err)
 	}
+	log.Printf("✅ [USER SEEDER DEBUG] Found Pro Monthly plan: ID=%s", proPlan.Id)
 
 	// Get all users
+	log.Println("🔍 [USER SEEDER DEBUG] Looking for existing users...")
 	users, err := app.FindRecordsByFilter("users", "", "", 0, 0)
 	if err != nil {
+		log.Printf("❌ [USER SEEDER DEBUG] Failed to find users: %v", err)
 		return fmt.Errorf("failed to find users: %w", err)
 	}
+	log.Printf("✅ [USER SEEDER DEBUG] Found %d users", len(users))
 
+	// Get user_subscriptions collection
+	log.Println("🔍 [USER SEEDER DEBUG] Looking for user_subscriptions collection...")
 	userSubscriptionCollection, err := app.FindCollectionByNameOrId("user_subscriptions")
 	if err != nil {
+		log.Printf("❌ [USER SEEDER DEBUG] Failed to find user_subscriptions collection: %v", err)
 		return fmt.Errorf("failed to find user_subscriptions collection: %w", err)
 	}
+	log.Printf("✅ [USER SEEDER DEBUG] Found user_subscriptions collection: %s", userSubscriptionCollection.Name)
 
 	now := time.Now()
-	oneYearFromNow := now.AddDate(1, 0, 0) // Free plan expires in 1 year
+	oneMonthFromNow := now.AddDate(0, 1, 0) // Pro plan expires in 1 month
 
 	for _, user := range users {
 		// Check if user already has a subscription
@@ -270,73 +279,41 @@ func seedExistingUsersWithFreePlan(app *pocketbase.PocketBase) error {
 			"user_id": user.Id,
 		})
 
+		var subscription *core.Record
 		if err != nil {
-			// Create new free subscription for user
-			subscription := core.NewRecord(userSubscriptionCollection)
+			// Create new Pro subscription for user
+			subscription = core.NewRecord(userSubscriptionCollection)
 			subscription.Set("user_id", user.Id)
-			subscription.Set("plan_id", freePlan.Id)
-			subscription.Set("status", "active")
-			subscription.Set("current_period_start", now)
-			subscription.Set("current_period_end", oneYearFromNow)
-			subscription.Set("cancel_at_period_end", false)
-
-			if err := app.Save(subscription); err != nil {
-				log.Printf("Warning: Failed to create free subscription for user %s: %v", user.Id, err)
-			} else {
-				log.Printf("✅ Created free subscription for user: %s", user.GetString("email"))
-			}
+			log.Printf("Creating new Pro subscription for user: %s", user.GetString("email"))
 		} else {
-			log.Printf("✅ User %s already has subscription: %s", user.GetString("email"), existingSubscription.Id)
+			// Update existing subscription to Pro
+			subscription = existingSubscription
+			log.Printf("Updating existing subscription to Pro for user: %s", user.GetString("email"))
+		}
+
+		// Set subscription fields
+		subscription.Set("plan_id", proPlan.Id)
+		subscription.Set("status", "active")
+		subscription.Set("current_period_start", now)
+		subscription.Set("current_period_end", oneMonthFromNow)
+		subscription.Set("cancel_at_period_end", false)
+		
+		// Set provider fields for Pro subscriptions
+		// For test data, we don't have real Stripe subscription IDs but we set the price ID
+		providerPriceID := proPlan.GetString("provider_price_id")
+		if providerPriceID != "" {
+			subscription.Set("provider_price_id", providerPriceID)
+		}
+		subscription.Set("payment_provider", "stripe")
+
+		if err := app.Save(subscription); err != nil {
+			log.Printf("❌ [USER SEEDER DEBUG] Failed to create/update Pro subscription for user %s (%s): %v", user.Id, user.GetString("email"), err)
+		} else {
+			log.Printf("✅ [USER SEEDER DEBUG] Successfully created/updated Pro subscription for user: %s (%s)", user.Id, user.GetString("email"))
 		}
 	}
 
-	return nil
-}
-
-// createBobProMembership updates bob@test.com to have a Pro membership dated 6 months ago
-func createBobProMembership(app *pocketbase.PocketBase) error {
-	log.Println("Creating Pro membership for bob@test.com dated 6 months ago...")
-
-	// Find bob@test.com user
-	bobUser, err := app.FindFirstRecordByFilter("users", "email = {:email}", map[string]any{
-		"email": "bob@test.com",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to find bob@test.com: %w", err)
-	}
-
-	// Find Pro Monthly plan
-	proMonthlyPlan, err := app.FindFirstRecordByFilter("subscription_plans", "name = 'Pro Monthly'", map[string]any{})
-	if err != nil {
-		return fmt.Errorf("failed to find Pro Monthly plan: %w", err)
-	}
-
-	// Find bob's current subscription
-	bobSubscription, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id}", map[string]any{
-		"user_id": bobUser.Id,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to find bob's subscription: %w", err)
-	}
-
-	// Calculate dates 6 months ago
-	now := time.Now()
-	sixMonthsAgo := now.AddDate(0, -6, 0) // 6 months ago
-	oneMonthLater := sixMonthsAgo.AddDate(0, 1, 0) // One month after start
-
-	// Update subscription to Pro Monthly with historical dates
-	bobSubscription.Set("plan_id", proMonthlyPlan.Id)
-	bobSubscription.Set("current_period_start", sixMonthsAgo)
-	bobSubscription.Set("current_period_end", oneMonthLater)
-	bobSubscription.Set("status", "active")
-
-	if err := app.Save(bobSubscription); err != nil {
-		return fmt.Errorf("failed to update bob's subscription: %w", err)
-	}
-
-	log.Printf("✅ Updated bob@test.com to Pro Monthly plan (period: %s to %s)", 
-		sixMonthsAgo.Format("2006-01-02"), oneMonthLater.Format("2006-01-02"))
-
+	log.Printf("🎉 [USER SEEDER DEBUG] Completed processing %d users", len(users))
 	return nil
 }
 
@@ -354,7 +331,7 @@ func cleanupDuplicateSubscriptions(app *pocketbase.PocketBase) error {
 	for _, user := range users {
 		// Get all active subscriptions for this user
 		subscriptions, err := app.FindRecordsByFilter("user_subscriptions", 
-			"user_id = {:user_id} AND status = 'active'", 
+			"user_id = {:user_id} && status = 'active'", 
 			"-current_period_end", // Sort by newest period end first
 			0, 0,
 			map[string]any{"user_id": user.Id})
@@ -412,5 +389,44 @@ func cleanupDuplicateSubscriptions(app *pocketbase.PocketBase) error {
 	}
 	
 	log.Printf("✅ Cleaned up %d duplicate subscriptions", fixedCount)
+	return nil
+}
+
+// verifyDatabaseState checks that all required collections exist and logs database status
+func verifyDatabaseState(app *pocketbase.PocketBase) error {
+	log.Println("🔍 [DATABASE DEBUG] Verifying database state...")
+	
+	// Check required collections
+	requiredCollections := []string{"subscription_plans", "user_subscriptions", "users"}
+	for _, collectionName := range requiredCollections {
+		collection, err := app.FindCollectionByNameOrId(collectionName)
+		if err != nil {
+			log.Printf("❌ [DATABASE DEBUG] Missing required collection: %s", collectionName)
+			return fmt.Errorf("missing required collection: %s", collectionName)
+		}
+		
+		// Count records in collection
+		var count int64
+		if collectionName == "users" {
+			// Users collection uses different counting method
+			users, err := app.FindRecordsByFilter(collectionName, "", "", 0, 0)
+			if err != nil {
+				count = 0
+			} else {
+				count = int64(len(users))
+			}
+		} else {
+			records, err := app.FindRecordsByFilter(collectionName, "", "", 0, 0)
+			if err != nil {
+				count = 0
+			} else {
+				count = int64(len(records))
+			}
+		}
+		
+		log.Printf("✅ [DATABASE DEBUG] Collection '%s' exists with %d records", collection.Name, count)
+	}
+	
+	log.Println("🎉 [DATABASE DEBUG] Database state verification completed")
 	return nil
 }

@@ -158,8 +158,8 @@ func (s *SubscriptionService) SwitchToFreePlan(userID string) (*core.Record, err
 		CurrentPeriodStart:    now,
 		CurrentPeriodEnd:      oneYearFromNow,
 		CancelAtPeriodEnd:     false,
-		StripeSubscriptionID:  nil, // Free plan has no Stripe subscription
-		StripePriceID:         nil,
+		ProviderSubscriptionID:  nil, // Free plan has no Stripe subscription
+		ProviderPriceID:         nil,
 		CanceledAt:            &now, // Mark when switched to free
 	}
 
@@ -279,19 +279,29 @@ func (s *SubscriptionService) HandleSubscriptionEvent(stripeSub *stripe.Subscrip
 		return fmt.Errorf("failed to extract price from subscription: %w", err)
 	}
 
-	plan, err := s.repo.GetPlanByStripePrice(stripePriceID)
+	plan, err := s.repo.GetPlanByProviderPrice(stripePriceID)
 	if err != nil {
 		return fmt.Errorf("failed to find subscription plan for price %s: %w", stripePriceID, err)
 	}
 
 	// Check if this is a plan change
-	existingSubscription, err := s.repo.FindSubscriptionByStripeID(stripeSub.ID)
+	existingSubscription, err := s.repo.FindSubscriptionByProviderID(stripeSub.ID)
 	if err != nil {
 		// No existing subscription - create new one
 		return s.createSubscriptionFromStripe(userID, plan.Id, stripeSub, stripePriceID)
 	}
 
-	// Update existing subscription
+	// CRITICAL: Check if subscription is set to cancel at period end
+	// If so, do NOT change the plan until the period actually ends
+	if stripeSub.CancelAtPeriodEnd {
+		log.Printf("Subscription %s is set to cancel at period end - preserving current plan until %v", 
+			stripeSub.ID, time.Unix(stripeSub.CurrentPeriodEnd, 0))
+		
+		// Only update the cancel_at_period_end flag and timestamps, preserve the current plan
+		return s.updateSubscriptionMetadataOnly(existingSubscription, stripeSub)
+	}
+
+	// Update existing subscription (plan can change immediately if not canceling at period end)
 	return s.updateSubscriptionFromStripe(existingSubscription, plan.Id, stripeSub, stripePriceID)
 }
 
@@ -321,7 +331,7 @@ func (s *SubscriptionService) HandlePaymentFailed(invoice *stripe.Invoice) error
 	}
 
 	// Update subscription status to past_due
-	subscription, err := s.repo.FindSubscriptionByStripeID(invoice.Subscription.ID)
+	subscription, err := s.repo.FindSubscriptionByProviderID(invoice.Subscription.ID)
 	if err != nil {
 		return err
 	}
@@ -387,7 +397,7 @@ func (s *SubscriptionService) ValidateAndFixSubscriptionTimestamps(subscription 
 func (s *SubscriptionService) getUserIDFromCustomer(customerID string) (string, error) {
 	// Cast the app to access PocketBase methods
 	if pbApp, ok := s.repo.(*PocketBaseRepository); ok {
-		record, err := pbApp.app.FindFirstRecordByFilter("stripe_customers", "stripe_customer_id = {:customer_id}", map[string]any{
+		record, err := pbApp.app.FindFirstRecordByFilter("payment_customers", "provider_customer_id = {:customer_id}", map[string]any{
 			"customer_id": customerID,
 		})
 		if err != nil {
@@ -413,7 +423,7 @@ func (s *SubscriptionService) handleSubscriptionCancellation(userID string, stri
 // getPlanByStripePrice retrieves a plan by Stripe price ID using the repository
 func (s *SubscriptionService) getPlanByStripePrice(stripePriceID string) (*core.Record, error) {
 	if pbRepo, ok := s.repo.(*PocketBaseRepository); ok {
-		return pbRepo.GetPlanByStripePrice(stripePriceID)
+		return pbRepo.GetPlanByProviderPrice(stripePriceID)
 	}
 	return nil, fmt.Errorf("unsupported repository type for plan lookup")
 }
@@ -440,8 +450,8 @@ func (s *SubscriptionService) createSubscriptionFromStripe(userID, planID string
 	params := CreateSubscriptionParams{
 		UserID:               userID,
 		PlanID:               planID,
-		StripeSubscriptionID: &stripeSub.ID,
-		StripePriceID:        &stripePriceID,
+		ProviderSubscriptionID: &stripeSub.ID,
+		ProviderPriceID:        &stripePriceID,
 		Status:               status,
 		CurrentPeriodStart:   start,
 		CurrentPeriodEnd:     end,
@@ -472,7 +482,7 @@ func (s *SubscriptionService) updateSubscriptionFromStripe(subscription *core.Re
 
 	params := UpdateSubscriptionParams{
 		PlanID:             &planID,
-		StripePriceID:      &stripePriceID,
+		ProviderPriceID:      &stripePriceID,
 		Status:             &status,
 		CurrentPeriodStart: &start,
 		CurrentPeriodEnd:   &end,
@@ -488,6 +498,41 @@ func (s *SubscriptionService) updateSubscriptionFromStripe(subscription *core.Re
 		params.TrialEnd = &trialEnd
 	}
 
+	_, err := s.repo.UpdateSubscription(subscription.Id, params)
+	return err
+}
+
+// updateSubscriptionMetadataOnly updates subscription metadata without changing the plan
+// This is used when a subscription is set to cancel at period end - we preserve the current plan
+// until the billing period actually ends
+func (s *SubscriptionService) updateSubscriptionMetadataOnly(subscription *core.Record, stripeSub *stripe.Subscription) error {
+	status := s.validator.MapStripeStatus(stripeSub.Status)
+	start := time.Unix(stripeSub.CurrentPeriodStart, 0)
+	end := time.Unix(stripeSub.CurrentPeriodEnd, 0)
+
+	// Fix invalid timestamps
+	start, end = s.validator.FixInvalidTimestamps(start, end)
+
+	// CRITICAL: Do NOT update PlanID or ProviderPriceID when cancel_at_period_end is true
+	// The user should keep their current plan benefits until the period ends
+	params := UpdateSubscriptionParams{
+		// PlanID and ProviderPriceID are intentionally omitted - preserve current plan
+		Status:             &status,
+		CurrentPeriodStart: &start,
+		CurrentPeriodEnd:   &end,
+		CancelAtPeriodEnd:  &stripeSub.CancelAtPeriodEnd,
+	}
+
+	if stripeSub.CanceledAt > 0 {
+		canceledAt := time.Unix(stripeSub.CanceledAt, 0)
+		params.CanceledAt = &canceledAt
+	}
+	if stripeSub.TrialEnd > 0 {
+		trialEnd := time.Unix(stripeSub.TrialEnd, 0)
+		params.TrialEnd = &trialEnd
+	}
+
+	log.Printf("Updating subscription metadata only (preserving current plan) for subscription %s", subscription.Id)
 	_, err := s.repo.UpdateSubscription(subscription.Id, params)
 	return err
 }
