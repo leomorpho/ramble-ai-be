@@ -210,8 +210,9 @@ DEVELOPMENT=true
 ```
 
 **Note**: Stripe redirect URLs are dynamically constructed using `HOST + route paths`:
-- Success URL: `{HOST}/billing?success=true`
+- Success URL: `{HOST}/pricing?success=true`
 - Cancel URL: `{HOST}/pricing?canceled=true`
+- Portal Return URL: `{HOST}/pricing`
 
 **⚠️ SECURITY**: Never commit `.env` file to git. Use `.env.example` as template.
 

@@ -47,6 +47,7 @@ env:
   clear:
     DEVELOPMENT: false
     HOST: https://api.ramble.goosebyteshq.com
+    FRONTEND_URL: http://ramble.goosebyteshq.com
   secret:
     - STRIPE_SECRET_KEY
     - STRIPE_SECRET_WHSEC
