@@ -11,6 +11,9 @@ import (
 
 const testDataDir = "./test_pb_data"
 
+// Test constants
+const TestUserEmail = "test@example.com"
+
 // setupTestApp creates a test app with our subscription management functions
 func setupTestApp(t testing.TB) *tests.TestApp {
 	testApp, err := tests.NewTestApp(testDataDir)
