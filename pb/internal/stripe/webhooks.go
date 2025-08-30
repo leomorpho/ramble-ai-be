@@ -173,45 +173,54 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 		}
 	}
 
-	// Now find or create the subscription record for this Stripe subscription
-	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND provider_subscription_id = {:sub_id}", map[string]any{
+	// SINGLE SUBSCRIPTION APPROACH: Find current active subscription for the user
+	// instead of looking for specific Stripe subscription ID
+	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", map[string]any{
 		"user_id": userID,
-		"sub_id": stripeSub.ID,
 	})
 
 	if err != nil {
-		// Before creating new record, ensure no other active subscriptions exist (safeguard)
-		remainingActive, _ := app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", "-created", 100, 0, map[string]any{
-			"user_id": userID,
-		})
-		
-		if len(remainingActive) > 0 {
-			log.Printf("SAFEGUARD: Found %d remaining active subscriptions for user %s, deactivating them", len(remainingActive), userID)
-			for _, activeRecord := range remainingActive {
-				activeRecord.Set("status", "cancelled")
-				activeRecord.Set("canceled_at", time.Now())
-				if err := app.Save(activeRecord); err != nil {
-					log.Printf("Failed to deactivate remaining subscription: %v", err)
-				}
-			}
-		}
-		
-		// Create new record
+		// No active subscription found - create new record
 		record = core.NewRecord(collection)
 		log.Printf("Creating new subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
 	} else {
-		log.Printf("Updating existing subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
+		// Found existing active subscription
+		existingStripeSubID := record.GetString("provider_subscription_id")
+		
+		// Check if this is an update to the same subscription or a new one
+		if existingStripeSubID == stripeSub.ID {
+			log.Printf("Updating existing subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
+		} else if existingStripeSubID != "" && existingStripeSubID != stripeSub.ID {
+			// This is a different Stripe subscription - this should not happen with single subscription approach
+			log.Printf("Warning: User %s has different Stripe subscription (%s vs %s) - updating to new one", 
+				userID, existingStripeSubID, stripeSub.ID)
+		}
+		
+		// Special handling for cancel_at_period_end updates
+		if stripeSub.CancelAtPeriodEnd {
+			log.Printf("Subscription %s has cancel_at_period_end=true - preserving current plan until period end", stripeSub.ID)
+			// Don't change plan_id or provider_price_id when cancel_at_period_end is true
+			// This preserves user's current benefits until period actually ends
+		}
 	}
 
 	// Update record fields
 	record.Set("user_id", userID)
-	if planID != "" {
-		record.Set("plan_id", planID)
+	
+	// CRITICAL: Only update plan/price when NOT in cancel_at_period_end state
+	// This preserves user's current benefits until Stripe actually cancels the subscription
+	if !stripeSub.CancelAtPeriodEnd {
+		if planID != "" {
+			record.Set("plan_id", planID)
+		}
+		if currentStripePriceID != "" {
+			record.Set("provider_price_id", currentStripePriceID)
+		}
+	} else {
+		log.Printf("Preserving current plan for user %s - subscription has cancel_at_period_end=true", userID)
 	}
+	
 	record.Set("provider_subscription_id", stripeSub.ID)
-	if currentStripePriceID != "" {
-		record.Set("provider_price_id", currentStripePriceID)
-	}
 	record.Set("status", mapStripeStatus(stripeSub.Status))
 	
 	// Log and set period dates with validation
@@ -242,46 +251,69 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	return app.Save(record)
 }
 
-// handleSubscriptionCancellation handles subscription deletion
+// handleSubscriptionCancellation handles subscription deletion with pending plan support
 func handleSubscriptionCancellation(app *pocketbase.PocketBase, userID string, stripeSub *stripe.Subscription) error {
 	log.Printf("Handling subscription cancellation for user %s", userID)
 
-	// Move user to free plan
-	freePlan, err := app.FindFirstRecordByFilter("subscription_plans", "billing_interval = 'free'", map[string]any{})
-	if err != nil {
-		return fmt.Errorf("failed to find free plan: %w", err)
-	}
-
-	// Update user's subscription to free plan
-	collection, err := app.FindCollectionByNameOrId("user_subscriptions")
-	if err != nil {
-		return err
-	}
-
-	// Find user's current subscription
+	// Find user's current subscription record
 	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND provider_subscription_id = {:sub_id}", map[string]any{
 		"user_id": userID,
 		"sub_id": stripeSub.ID,
 	})
 
 	if err != nil {
-		// If no existing subscription, create a free one
-		record = core.NewRecord(collection)
-		record.Set("user_id", userID)
+		log.Printf("No subscription record found for user %s, subscription %s", userID, stripeSub.ID)
+		return fmt.Errorf("subscription record not found: %w", err)
 	}
 
-	// Set to free plan
+	// CRITICAL: Check if there's a pending plan change
+	pendingPlanID := record.GetString("pending_plan_id")
+	
+	var targetPlan *core.Record
+	
+	if pendingPlanID != "" {
+		// User has a pending plan change - use that plan
+		log.Printf("Processing pending plan change for user %s: switching to plan %s", userID, pendingPlanID)
+		
+		targetPlan, err = app.FindFirstRecordByFilter("subscription_plans", "id = {:plan_id}", map[string]any{
+			"plan_id": pendingPlanID,
+		})
+		if err != nil {
+			log.Printf("Warning: Failed to find pending target plan %s for user %s, defaulting to free", pendingPlanID, userID)
+			targetPlan = nil // Will fall back to free plan below
+		} else {
+			log.Printf("Successfully found pending target plan: %s (%s)", targetPlan.GetString("name"), targetPlan.Id)
+		}
+	}
+	
+	// If no pending plan or pending plan not found, use free plan
+	if targetPlan == nil {
+		log.Printf("No pending plan for user %s, moving to free plan", userID)
+		targetPlan, err = app.FindFirstRecordByFilter("subscription_plans", "billing_interval = 'free'", map[string]any{})
+		if err != nil {
+			return fmt.Errorf("failed to find free plan: %w", err)
+		}
+	}
+
+	// Update the EXISTING subscription record (single subscription approach)
 	now := time.Now()
 	oneYearFromNow := now.AddDate(1, 0, 0)
 
-	record.Set("plan_id", freePlan.Id)
-	record.Set("provider_subscription_id", nil) // Remove Stripe subscription ID
+	record.Set("plan_id", targetPlan.Id)
+	record.Set("provider_subscription_id", "") // Remove Stripe subscription ID
+	record.Set("provider_price_id", "")        // Clear Stripe price ID
 	record.Set("status", "active")
 	record.Set("current_period_start", now)
 	record.Set("current_period_end", oneYearFromNow)
 	record.Set("cancel_at_period_end", false)
 	record.Set("canceled_at", time.Unix(stripeSub.CanceledAt, 0))
-
+	
+	// Clear pending plan fields since the change has now been applied
+	record.Set("pending_plan_id", "")
+	record.Set("pending_change_effective_date", "")
+	
+	log.Printf("Updated subscription for user %s to plan %s (%s)", userID, targetPlan.GetString("name"), targetPlan.Id)
+	
 	return app.Save(record)
 }
 

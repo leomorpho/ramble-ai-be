@@ -148,7 +148,7 @@ func CreatePortalLink(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	return e.JSON(http.StatusOK, map[string]string{"url": ps.URL})
 }
 
-// ChangePlan handles direct plan changes without checkout (for downgrades/cancellations)
+// ChangePlan handles direct plan changes with single subscription approach
 func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	var data ChangePlanRequest
 
@@ -198,20 +198,15 @@ func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	// Handle upgrades vs downgrades differently
 	if isUpgrade {
 		// UPGRADES: Apply immediately with proration (user gets better benefits right away)
-		return handleUpgrade(e, stripeSubID, targetPlan)
+		return handleUpgradeWithSingleSubscription(e, app, stripeSubID, currentSub, targetPlan)
 	} else {
-		// DOWNGRADES: Use cancel_at_period_end to preserve current benefits until period ends
-		return handleDowngrade(e, app, stripeSubID, currentSub, targetPlan, data.UserID)
+		// DOWNGRADES: Use cancel_at_period_end and store pending plan
+		return handleDowngradeWithPendingPlan(e, app, stripeSubID, currentSub, targetPlan, data.UserID)
 	}
-
-	// This code should not be reached due to the upgrade/downgrade handling above
-	return e.JSON(http.StatusInternalServerError, map[string]string{
-		"error": "Unexpected code path in plan change",
-	})
 }
 
-// handleUpgrade processes plan upgrades - applies changes immediately with proration
-func handleUpgrade(e *core.RequestEvent, stripeSubID string, targetPlan *core.Record) error {
+// handleUpgradeWithSingleSubscription processes plan upgrades - applies changes immediately with proration
+func handleUpgradeWithSingleSubscription(e *core.RequestEvent, app *pocketbase.PocketBase, stripeSubID string, currentSub *core.Record, targetPlan *core.Record) error {
 	log.Printf("Processing UPGRADE: Applying immediately with proration")
 	
 	stripePriceID := targetPlan.GetString("provider_price_id")
@@ -250,6 +245,20 @@ func handleUpgrade(e *core.RequestEvent, stripeSubID string, targetPlan *core.Re
 		})
 	}
 
+	// Update the current subscription record in PocketBase (not creating a new one!)
+	currentSub.Set("plan_id", targetPlan.Id)
+	currentSub.Set("provider_price_id", stripePriceID)
+	currentSub.Set("current_period_start", time.Unix(updatedSub.CurrentPeriodStart, 0))
+	currentSub.Set("current_period_end", time.Unix(updatedSub.CurrentPeriodEnd, 0))
+	// Clear any pending plan changes since upgrade was immediate
+	currentSub.Set("pending_plan_id", "")
+	currentSub.Set("pending_change_effective_date", "")
+	
+	if err := app.Save(currentSub); err != nil {
+		log.Printf("Warning: Failed to update subscription record after upgrade: %v", err)
+		// Don't fail the request - Stripe change was successful
+	}
+
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Upgrade applied immediately - you now have access to enhanced features!",
@@ -259,14 +268,14 @@ func handleUpgrade(e *core.RequestEvent, stripeSubID string, targetPlan *core.Re
 	})
 }
 
-// handleDowngrade processes plan downgrades - preserves current benefits until period end
-func handleDowngrade(e *core.RequestEvent, app *pocketbase.PocketBase, stripeSubID string, currentSub *core.Record, targetPlan *core.Record, userID string) error {
-	log.Printf("Processing DOWNGRADE: Preserving current benefits until period end")
+// handleDowngradeWithPendingPlan processes plan downgrades - preserves current benefits until period end
+func handleDowngradeWithPendingPlan(e *core.RequestEvent, app *pocketbase.PocketBase, stripeSubID string, currentSub *core.Record, targetPlan *core.Record, userID string) error {
+	log.Printf("Processing DOWNGRADE: Preserving current benefits until period end using pending plan")
 	
-	// CRITICAL: For downgrades, we need to preserve current benefits until the billing period ends
-	// We do this by setting cancel_at_period_end=true and creating a scheduled plan change
+	// CRITICAL: For downgrades, we preserve current benefits until billing period ends
+	// We do this by setting cancel_at_period_end=true in Stripe and storing the target plan in our database
 	
-	// Step 1: Set current subscription to cancel at period end
+	// Step 1: Set current subscription to cancel at period end in Stripe
 	params := &stripe.SubscriptionParams{
 		CancelAtPeriodEnd: stripe.Bool(true),
 	}
@@ -278,38 +287,32 @@ func handleDowngrade(e *core.RequestEvent, app *pocketbase.PocketBase, stripeSub
 		})
 	}
 
-	// Step 2: Create a record of the pending plan change for the period end
-	// This will be processed when the subscription actually cancels/renews
-	if err := createPendingPlanChange(app, userID, targetPlan.Id, updatedSub.CurrentPeriodEnd); err != nil {
-		log.Printf("Warning: Failed to create pending plan change record: %v", err)
-		// Don't fail the request - the Stripe webhook will handle the actual change
+	// Step 2: Update the CURRENT subscription record with pending plan info
+	// This is the key: we store WHAT plan to change to, and WHEN Stripe will do it
+	currentSub.Set("cancel_at_period_end", true)
+	currentSub.Set("pending_plan_id", targetPlan.Id)
+	currentSub.Set("pending_change_effective_date", time.Unix(updatedSub.CurrentPeriodEnd, 0))
+	
+	if err := app.Save(currentSub); err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to store pending plan change: " + err.Error(),
+		})
 	}
 
 	// Format the period end date for user-friendly display
 	periodEndDate := time.Unix(updatedSub.CurrentPeriodEnd, 0).Format("January 2, 2006")
 
+	log.Printf("Downgrade scheduled for user %s: %s -> %s effective %s", 
+		userID, currentSub.GetString("plan_id"), targetPlan.Id, periodEndDate)
+
 	return e.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Downgrade scheduled - you'll keep your current benefits until %s, then switch to the new plan", periodEndDate),
+		"message": fmt.Sprintf("Downgrade scheduled - you'll keep your current benefits until %s, then switch to %s", periodEndDate, targetPlan.GetString("name")),
 		"provider_subscription_id": updatedSub.ID,
-		"new_plan": targetPlan.Id,
+		"current_plan": currentSub.GetString("plan_id"),
+		"pending_plan": targetPlan.Id,
 		"change_type": "downgrade",
 		"effective_date": periodEndDate,
 		"cancel_at_period_end": true,
 	})
-}
-
-// createPendingPlanChange creates a record to track plan changes that will happen at period end
-func createPendingPlanChange(app *pocketbase.PocketBase, userID string, newPlanID string, effectiveDate int64) error {
-	// This is a helper function to track pending plan changes
-	// In a full implementation, you might want a separate collection for this
-	// For now, we'll just log it - the webhook handling will manage the actual change
-	
-	log.Printf("Pending plan change for user %s: new plan %s effective %s", 
-		userID, newPlanID, time.Unix(effectiveDate, 0).Format("2006-01-02"))
-	
-	// TODO: Implement pending_plan_changes collection if needed for complex scenarios
-	// This would track scheduled plan changes that need to happen at period end
-	
-	return nil
 }
