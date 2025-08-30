@@ -326,3 +326,116 @@ SMTP_TLS=true
 EMAIL_FROM=noreply@yourdomain.com
 EMAIL_FROM_NAME=Your App Name
 ```
+
+## Testing
+
+This project uses Go unit tests with PocketBase's testing framework for backend logic and business rules.
+
+### Backend Testing (Go)
+
+#### Running Tests
+```bash
+cd pb
+go test ./internal/stripe -v    # Run stripe package tests
+go test ./... -v                # Run all tests
+```
+
+#### Test Structure
+Tests are located alongside the code they test:
+- `internal/stripe/subscription_test.go` - Subscription management tests
+- `internal/stripe/logic_test.go` - Pure business logic tests
+
+#### Writing Tests
+
+**Use PocketBase Testing Framework** for integration tests:
+
+```go
+package stripe
+
+import (
+    "testing"
+    "github.com/pocketbase/pocketbase/tests"
+)
+
+const testDataDir = "./test_pb_data"
+
+func setupTestApp(t testing.TB) *tests.TestApp {
+    testApp, err := tests.NewTestApp(testDataDir)
+    if err != nil {
+        t.Fatal(err)
+    }
+    return testApp
+}
+
+func TestYourFunction(t *testing.T) {
+    testApp := setupTestApp(t)
+    defer testApp.Cleanup()
+
+    // Test your PocketBase logic here
+    user := createTestUser(testApp, "test@example.com")
+    // ... test assertions
+}
+```
+
+**For Pure Logic** use standard Go testing:
+
+```go
+func TestMapStripeStatus(t *testing.T) {
+    tests := []struct {
+        input    stripe.SubscriptionStatus
+        expected string
+    }{
+        {stripe.SubscriptionStatusActive, "active"},
+        {stripe.SubscriptionStatusCanceled, "cancelled"},
+    }
+    
+    for _, test := range tests {
+        result := mapStripeStatus(test.input)
+        if result != test.expected {
+            t.Errorf("mapStripeStatus(%v) = %s, expected %s", 
+                test.input, result, test.expected)
+        }
+    }
+}
+```
+
+#### Test Data Setup
+
+1. **Create test database**: 
+   ```bash
+   ./pocketbase serve --dir="./test_pb_data" --automigrate=0
+   ```
+
+2. **Set up test data via Dashboard**: Navigate to admin UI and create test collections/records
+
+3. **Commit test data**: Include `test_pb_data/` in your repository for consistent tests
+
+#### Testing Guidelines
+
+- **Test Critical Business Logic**: Focus on subscription management, billing, user data integrity
+- **Test Edge Cases**: Invalid dates (1970), duplicate subscriptions, malformed webhooks
+- **Use Descriptive Names**: `TestCleanupDuplicateSubscriptions_FixesDates`
+- **Clean Up**: Always use `defer testApp.Cleanup()` in integration tests
+- **Mock External APIs**: Use test Stripe data, don't call real Stripe API in tests
+
+#### Pre-commit Hooks
+
+Tests run automatically before commits via lefthook:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    go-test:
+      run: cd pb && go test ./... -v
+      fail_text: "Go tests failed"
+```
+
+#### Example Test Cases
+
+- **Subscription Deduplication**: Ensure users have only one active subscription
+- **Date Validation**: Fix 1970 Unix timestamp issues
+- **Webhook Processing**: Verify proper Stripe webhook handling
+- **Status Mapping**: Test Stripe status to internal status conversion
+
+This ensures reliable, well-tested subscription management and prevents regressions.
