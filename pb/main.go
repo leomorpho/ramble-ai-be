@@ -17,6 +17,7 @@ import (
 	bannerhandlers "pocketbase/internal/banners"
 	otphandlers "pocketbase/internal/otp"
 	stripehandlers "pocketbase/internal/stripe"
+	versionshandlers "pocketbase/internal/versions"
 	"pocketbase/webauthn"
 )
 
@@ -90,6 +91,11 @@ func main() {
 			// Seed subscription plans
 			if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
 				log.Printf("Warning: Failed to seed subscription plans: %v", err)
+			}
+
+			// Seed app versions for download testing
+			if err := versionshandlers.SeedAppVersions(app); err != nil {
+				log.Printf("Warning: Failed to seed app versions: %v", err)
 			}
 		} else {
 			// Production mode: Create superuser if none exists

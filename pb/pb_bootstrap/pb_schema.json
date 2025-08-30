@@ -2335,7 +2335,7 @@
                 "id": "bool_is_latest",
                 "name": "is_latest",
                 "presentable": false,
-                "required": true,
+                "required": false,
                 "system": false,
                 "type": "bool"
             },
@@ -2344,7 +2344,7 @@
                 "id": "bool_is_released",
                 "name": "is_released",
                 "presentable": false,
-                "required": true,
+                "required": false,
                 "system": false,
                 "type": "bool"
             },
@@ -2353,7 +2353,7 @@
                 "id": "bool_is_prerelease",
                 "name": "is_prerelease",
                 "presentable": false,
-                "required": true,
+                "required": false,
                 "system": false,
                 "type": "bool"
             },
