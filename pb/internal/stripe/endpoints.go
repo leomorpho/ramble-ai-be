@@ -10,6 +10,7 @@ import (
 	"github.com/stripe/stripe-go/v79"
 	billingportal "github.com/stripe/stripe-go/v79/billingportal/session"
 	checkoutsession "github.com/stripe/stripe-go/v79/checkout/session"
+	"github.com/stripe/stripe-go/v79/subscription"
 )
 
 // CreateCheckoutSessionRequest represents the request payload for creating a checkout session
@@ -21,6 +22,12 @@ type CreateCheckoutSessionRequest struct {
 // CreatePortalLinkRequest represents the request payload for creating a portal link
 type CreatePortalLinkRequest struct {
 	UserID string `json:"user_id"`
+}
+
+// ChangePlanRequest represents the request payload for directly changing plans
+type ChangePlanRequest struct {
+	UserID string `json:"user_id"`
+	PlanID string `json:"plan_id"`
 }
 
 // getBaseURL returns the base URL for the application, falling back to localhost:8090 if HOST is not set
@@ -136,4 +143,80 @@ func CreatePortalLink(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 	}
 
 	return e.JSON(http.StatusOK, map[string]string{"url": ps.URL})
+}
+
+// ChangePlan handles direct plan changes without checkout (for downgrades/cancellations)
+func ChangePlan(e *core.RequestEvent, app *pocketbase.PocketBase) error {
+	var data ChangePlanRequest
+
+	if err := e.BindBody(&data); err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Get the user's current active subscription
+	currentSub, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", map[string]any{
+		"user_id": data.UserID,
+	})
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]string{"error": "No active subscription found"})
+	}
+
+	// Get the target plan details
+	targetPlan, err := app.FindFirstRecordByFilter("prices", "id = {:plan_id}", map[string]any{
+		"plan_id": data.PlanID,
+	})
+	if err != nil {
+		return e.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid plan ID"})
+	}
+
+	// Get Stripe subscription ID
+	stripeSubID := currentSub.GetString("stripe_subscription_id")
+	if stripeSubID == "" {
+		return e.JSON(http.StatusBadRequest, map[string]string{"error": "No Stripe subscription ID found"})
+	}
+
+	// Update the Stripe subscription to the new plan
+	stripePriceID := targetPlan.GetString("stripe_price_id")
+	
+	// Get the current subscription to find the subscription item ID to update
+	currentStripeSub, err := subscription.Get(stripeSubID, nil)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to get current subscription from Stripe: " + err.Error(),
+		})
+	}
+	
+	if len(currentStripeSub.Items.Data) == 0 {
+		return e.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Current subscription has no items to update",
+		})
+	}
+	
+	// Update the subscription by replacing the existing item with the new price
+	params := &stripe.SubscriptionParams{
+		Items: []*stripe.SubscriptionItemsParams{
+			{
+				ID:    stripe.String(currentStripeSub.Items.Data[0].ID),
+				Price: stripe.String(stripePriceID),
+			},
+		},
+	}
+	
+	// For downgrades, apply changes immediately
+	params.ProrationBehavior = stripe.String("always_invoice")
+	
+	updatedSub, err := subscription.Update(stripeSubID, params)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to update subscription in Stripe: " + err.Error(),
+		})
+	}
+
+	// The webhook will handle updating our database, but we can return success immediately
+	return e.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Plan changed successfully",
+		"stripe_subscription_id": updatedSub.ID,
+		"new_plan": data.PlanID,
+	})
 }

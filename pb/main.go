@@ -117,6 +117,10 @@ func main() {
 		se.Router.POST("/stripe", func(e *core.RequestEvent) error {
 			return stripehandlers.HandleWebhook(e, app)
 		})
+		
+		se.Router.POST("/change-plan", func(e *core.RequestEvent) error {
+			return stripehandlers.ChangePlan(e, app)
+		})
 
 		// Health check endpoint for Kamal deployment
 		// Note: Commented out to avoid conflicts with PocketBase's built-in health endpoint
