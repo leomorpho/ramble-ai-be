@@ -3,7 +3,7 @@
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
 	import { createCheckoutSession } from '$lib/stripe.ts';
 	import { config } from '$lib/config.ts';
-	import { Loader2, Check, Crown, Zap } from 'lucide-svelte';
+	import { Loader2, Check, Crown, Zap, AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -99,8 +99,28 @@
 	</div>
 </section>
 
+<!-- Pending Change Notice -->
+{#if subscriptionStore.cancelAtPeriodEnd}
+	<section class="px-6">
+		<div class="max-w-4xl mx-auto">
+			<div class="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/30 p-4">
+				<div class="flex items-start">
+					<AlertCircle class="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
+					<div>
+						<h3 class="text-sm font-semibold text-blue-800 dark:text-blue-200">Plan Change Scheduled</h3>
+						<p class="text-sm text-blue-700 dark:text-blue-300 mt-1">
+							Your current plan will remain active until {subscriptionStore.currentPeriodEnd ? new Date(subscriptionStore.currentPeriodEnd).toLocaleDateString() : 'period end'}.
+							To make immediate changes or cancel the scheduled change, use the billing portal below.
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+{/if}
+
 <!-- Pricing Plans -->
-<section class="py-20 border-t px-6">
+<section class="py-20 {subscriptionStore.cancelAtPeriodEnd ? '' : 'border-t'} px-6">
 	<div class="max-w-4xl mx-auto">
 		{#if subscriptionStore.isLoading}
 			<div class="text-center py-8">
@@ -124,7 +144,13 @@
 					{@const isCurrentPlan = subscriptionStore.isCurrentPlan(plan.id)}
 					
 					<div class="relative border rounded-lg p-6 {isCurrentPlan ? 'bg-green-50 dark:bg-green-900/30' : ''}">
-						{#if isCurrentPlan}
+						{#if isCurrentPlan && subscriptionStore.cancelAtPeriodEnd}
+							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+								<Badge class="bg-blue-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
+									Active until {subscriptionStore.currentPeriodEnd ? new Date(subscriptionStore.currentPeriodEnd).toLocaleDateString() : 'period end'}
+								</Badge>
+							</div>
+						{:else if isCurrentPlan}
 							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
 								<Badge class="bg-green-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
 									✓ Current Plan

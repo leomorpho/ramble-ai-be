@@ -135,7 +135,22 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 		return err
 	}
 
-	// Try to find existing subscription for this user
+	// First, deactivate any existing active subscriptions for this user
+	existingActive, _ := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND status = 'active'", map[string]any{
+		"user_id": userID,
+	})
+	
+	if existingActive != nil && existingActive.GetString("stripe_subscription_id") != stripeSub.ID {
+		// User is switching plans - mark old subscription as cancelled
+		existingActive.Set("status", "cancelled")
+		existingActive.Set("canceled_at", time.Now())
+		if err := app.Save(existingActive); err != nil {
+			log.Printf("Failed to deactivate old subscription: %v", err)
+		}
+		log.Printf("Deactivated old subscription for user %s", userID)
+	}
+
+	// Now find or create the subscription record for this Stripe subscription
 	record, err := app.FindFirstRecordByFilter("user_subscriptions", "user_id = {:user_id} AND stripe_subscription_id = {:sub_id}", map[string]any{
 		"user_id": userID,
 		"sub_id": stripeSub.ID,
@@ -144,9 +159,9 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	if err != nil {
 		// Create new record
 		record = core.NewRecord(collection)
-		log.Printf("Creating new subscription record for user %s", userID)
+		log.Printf("Creating new subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
 	} else {
-		log.Printf("Updating existing subscription record for user %s", userID)
+		log.Printf("Updating existing subscription record for user %s with Stripe ID %s", userID, stripeSub.ID)
 	}
 
 	// Update record fields
@@ -156,8 +171,23 @@ func handleSubscriptionEvent(app *pocketbase.PocketBase, stripeSub *stripe.Subsc
 	}
 	record.Set("stripe_subscription_id", stripeSub.ID)
 	record.Set("status", mapStripeStatus(stripeSub.Status))
-	record.Set("current_period_start", time.Unix(stripeSub.CurrentPeriodStart, 0))
-	record.Set("current_period_end", time.Unix(stripeSub.CurrentPeriodEnd, 0))
+	
+	// Log and set period dates with validation
+	if stripeSub.CurrentPeriodStart > 0 {
+		record.Set("current_period_start", time.Unix(stripeSub.CurrentPeriodStart, 0))
+	} else {
+		log.Printf("Warning: CurrentPeriodStart is 0 for subscription %s", stripeSub.ID)
+		record.Set("current_period_start", time.Now())
+	}
+	
+	if stripeSub.CurrentPeriodEnd > 0 {
+		record.Set("current_period_end", time.Unix(stripeSub.CurrentPeriodEnd, 0))
+	} else {
+		log.Printf("Warning: CurrentPeriodEnd is 0 for subscription %s", stripeSub.ID)
+		// Default to 30 days from now for monthly subscriptions
+		record.Set("current_period_end", time.Now().AddDate(0, 1, 0))
+	}
+	
 	record.Set("cancel_at_period_end", stripeSub.CancelAtPeriodEnd)
 
 	if stripeSub.CanceledAt > 0 {

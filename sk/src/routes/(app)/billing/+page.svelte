@@ -165,6 +165,22 @@
 				</div>
 			</div>
 
+			<!-- Pending Plan Change Notice -->
+			{#if subscriptionStore.cancelAtPeriodEnd}
+				<div class="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-6">
+					<div class="flex items-start">
+						<AlertCircle class="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
+						<div>
+							<h3 class="text-sm font-semibold text-blue-800">Plan Change Scheduled</h3>
+							<p class="text-sm text-blue-700 mt-1">
+								Your current plan will remain active until {subscriptionStore.currentPeriodEnd ? formatDate(subscriptionStore.currentPeriodEnd) : 'period end'}.
+								After this date, your subscription will be updated.
+							</p>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<!-- Manage Subscription -->
 			<div class="rounded-lg border bg-card p-6 mb-8">
 				<h2 class="text-lg font-semibold mb-4">Manage Subscription</h2>

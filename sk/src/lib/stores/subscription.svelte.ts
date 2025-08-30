@@ -121,6 +121,14 @@ class SubscriptionStore {
 		return this.#userSubscription?.status || 'none';
 	}
 
+	get cancelAtPeriodEnd() {
+		return this.#userSubscription?.cancel_at_period_end ?? false;
+	}
+
+	get currentPeriodEnd() {
+		return this.#userSubscription?.current_period_end;
+	}
+
 	get canProcessFiles() {
 		return this.#usage?.can_process_more ?? false;
 	}

@@ -75,6 +75,11 @@ func SeedSubscriptionPlans(app *pocketbase.PocketBase) error {
 		}
 	}
 
+	// Clean up duplicate active subscriptions (one-time fix)
+	if err := cleanupDuplicateSubscriptions(app); err != nil {
+		log.Printf("Warning: Failed to cleanup duplicate subscriptions: %v", err)
+	}
+
 	// Seed all existing users with Free plan subscriptions
 	if err := seedExistingUsersWithFreePlan(app); err != nil {
 		log.Printf("Warning: Failed to seed existing users with free plan: %v", err)
@@ -332,5 +337,80 @@ func createBobProMembership(app *pocketbase.PocketBase) error {
 	log.Printf("✅ Updated bob@test.com to Pro Monthly plan (period: %s to %s)", 
 		sixMonthsAgo.Format("2006-01-02"), oneMonthLater.Format("2006-01-02"))
 
+	return nil
+}
+
+// cleanupDuplicateSubscriptions ensures only one active subscription per user
+func cleanupDuplicateSubscriptions(app *pocketbase.PocketBase) error {
+	log.Println("🧹 Cleaning up duplicate active subscriptions...")
+	
+	// Get all users
+	users, err := app.FindRecordsByFilter("users", "", "", 0, 0)
+	if err != nil {
+		return fmt.Errorf("failed to find users: %w", err)
+	}
+	
+	fixedCount := 0
+	for _, user := range users {
+		// Get all active subscriptions for this user
+		subscriptions, err := app.FindRecordsByFilter("user_subscriptions", 
+			"user_id = {:user_id} AND status = 'active'", 
+			"-current_period_end", // Sort by newest period end first
+			0, 0,
+			map[string]any{"user_id": user.Id})
+		
+		if err != nil || len(subscriptions) <= 1 {
+			continue // No duplicates for this user
+		}
+		
+		log.Printf("Found %d active subscriptions for user %s, keeping only the most recent", 
+			len(subscriptions), user.GetString("email"))
+		
+		// Keep the first one (most recent period_end), cancel the rest
+		for i := 1; i < len(subscriptions); i++ {
+			sub := subscriptions[i]
+			sub.Set("status", "cancelled")
+			sub.Set("canceled_at", time.Now())
+			
+			// Fix 1970 dates if present
+			startTime := sub.GetDateTime("current_period_start").Time()
+			if startTime.Year() < 2000 {
+				sub.Set("current_period_start", time.Now().AddDate(0, -1, 0)) // 1 month ago
+			}
+			endTime := sub.GetDateTime("current_period_end").Time()
+			if endTime.Year() < 2000 {
+				sub.Set("current_period_end", time.Now()) // Now (since it's cancelled)
+			}
+			
+			if err := app.Save(sub); err != nil {
+				log.Printf("Failed to deactivate duplicate subscription: %v", err)
+			} else {
+				fixedCount++
+			}
+		}
+		
+		// Also fix the dates on the active subscription if needed
+		activeSub := subscriptions[0]
+		needsUpdate := false
+		
+		activeStartTime := activeSub.GetDateTime("current_period_start").Time()
+		if activeStartTime.Year() < 2000 {
+			activeSub.Set("current_period_start", time.Now())
+			needsUpdate = true
+		}
+		activeEndTime := activeSub.GetDateTime("current_period_end").Time()
+		if activeEndTime.Year() < 2000 {
+			activeSub.Set("current_period_end", time.Now().AddDate(0, 1, 0)) // 1 month from now
+			needsUpdate = true
+		}
+		
+		if needsUpdate {
+			if err := app.Save(activeSub); err != nil {
+				log.Printf("Failed to fix dates on active subscription: %v", err)
+			}
+		}
+	}
+	
+	log.Printf("✅ Cleaned up %d duplicate subscriptions", fixedCount)
 	return nil
 }
