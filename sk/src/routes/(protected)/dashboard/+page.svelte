@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/authClient.svelte.js';
-	import { subscriptionStore } from '$lib/stores/subscription.svelte.js';
 	import { config } from '$lib/config.js';
 	import { pb } from '$lib/pocketbase.js';
 	import { Crown, User, Mail, Calendar, Settings, Edit3, Shield } from 'lucide-svelte';
@@ -12,6 +11,12 @@
 	import APIKeyManager from '$lib/components/APIKeyManager.svelte';
 	import OTPVerification from '$lib/components/OTPVerification.svelte';
 
+	// Subscription data
+	let subscriptionPlan = $state(null);
+	let subscriptionData = $state(null);
+	let usageData = $state(null);
+	let isLoadingSubscription = $state(false);
+
 	// Helper to format date
 	function formatDate(dateString: string): string {
 		return new Date(dateString).toLocaleDateString('en-US', {
@@ -20,6 +25,99 @@
 			day: 'numeric'
 		});
 	}
+
+	// Track if we've already loaded data for current user
+	let loadedForUserId = $state<string | null>(null);
+	
+	// Load subscription data
+	async function loadSubscriptionData() {
+		if (!authStore.user || isLoadingSubscription || loadedForUserId === authStore.user.id) {
+			return;
+		}
+
+		isLoadingSubscription = true;
+		loadedForUserId = authStore.user.id;
+		
+		try {
+			// Get user's active subscription
+			const subscriptions = await pb.collection('user_subscriptions').getFullList({
+				filter: `user_id = "${authStore.user.id}" && status = "active"`,
+				sort: '-created'
+			}, {
+				// Use different request key to avoid auto-cancellation
+				requestKey: `subscription_${authStore.user.id}_${Date.now()}`
+			});
+
+			if (subscriptions.length > 0) {
+				const subscription = subscriptions[0];
+				subscriptionData = subscription;
+
+				// Get the plan details
+				if (subscription.plan_id) {
+					const plans = await pb.collection('subscription_plans').getFullList({
+						filter: `id = "${subscription.plan_id}"`
+					}, {
+						requestKey: `plan_${subscription.plan_id}_${Date.now()}`
+					});
+
+					if (plans.length > 0) {
+						subscriptionPlan = plans[0];
+					}
+				}
+
+				// Get usage data
+				const now = new Date();
+				const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+				
+				const usage = await pb.collection('monthly_usage').getFullList({
+					filter: `user_id = "${authStore.user.id}" && year_month = "${yearMonth}"`,
+					sort: '-last_processing_date'
+				}, {
+					requestKey: `usage_${authStore.user.id}_${yearMonth}_${Date.now()}`
+				});
+
+				if (usage.length > 0) {
+					const hoursUsed = usage[0].hours_used || 0;
+					const hoursLimit = subscriptionPlan?.hours_per_month || 10;
+					usageData = {
+						hours_used: hoursUsed,
+						hours_limit: hoursLimit,
+						usage_percentage: (hoursUsed / hoursLimit) * 100
+					};
+				}
+			} else {
+				// No subscription found - clear data
+				subscriptionData = null;
+				subscriptionPlan = null;
+				usageData = null;
+			}
+		} catch (error) {
+			// Only log non-cancellation errors
+			if (!error.message?.includes('autocancelled')) {
+				console.error('Failed to load subscription data:', error);
+			}
+		} finally {
+			isLoadingSubscription = false;
+		}
+	}
+
+	// Watch for user changes
+	$effect(() => {
+		if (authStore.user && authStore.user.id !== loadedForUserId) {
+			// User changed, reset and load new data
+			subscriptionPlan = null;
+			subscriptionData = null;
+			usageData = null;
+			loadedForUserId = null;
+			loadSubscriptionData();
+		} else if (!authStore.user) {
+			// User logged out
+			subscriptionPlan = null;
+			subscriptionData = null;
+			usageData = null;
+			loadedForUserId = null;
+		}
+	});
 
 	// Personal account editing state
 	let isEditingProfile = $state(false);
@@ -268,7 +366,7 @@
 
 						<!-- Account Status and Actions -->
 						<div class="flex flex-col sm:flex-row gap-3">
-							{#if subscriptionStore.isSubscribed}
+							{#if subscriptionData?.status === 'active'}
 								<div class="flex items-center gap-2 px-3 py-1 bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-200 rounded-lg text-sm font-medium w-fit">
 									<Crown class="w-4 h-4" />
 									Premium Member
@@ -304,27 +402,42 @@
 		<div class="border rounded-lg p-6">
 			<h3 class="text-lg font-semibold mb-4">Current Plan</h3>
 			
-			{#if subscriptionStore.currentPlan}
+			{#if isLoadingSubscription}
+				<!-- Loading State -->
+				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
+					<div class="flex items-center gap-4">
+						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center animate-pulse">
+							<div class="w-5 h-5 bg-muted-foreground/30 rounded"></div>
+						</div>
+						<div class="space-y-2">
+							<div class="h-5 w-24 bg-muted-foreground/20 rounded animate-pulse"></div>
+							<div class="h-4 w-32 bg-muted-foreground/20 rounded animate-pulse"></div>
+						</div>
+					</div>
+					<div class="h-10 w-24 bg-muted-foreground/20 rounded animate-pulse"></div>
+				</div>
+			{:else if subscriptionPlan && subscriptionData}
+				<!-- Has Active Plan -->
 				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
 					<div class="flex items-center gap-4">
 						<div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
 							<Crown class="w-5 h-5 text-primary" />
 						</div>
 						<div>
-							<h4 class="text-lg font-semibold">{subscriptionStore.currentPlan.name}</h4>
+							<h4 class="text-lg font-semibold">{subscriptionPlan.name}</h4>
 							<p class="text-sm text-muted-foreground">
-								{subscriptionStore.currentPlan.hours_per_month} hour{subscriptionStore.currentPlan.hours_per_month !== 1 ? 's' : ''} per month
-								• ${(subscriptionStore.currentPlan.price_cents / 100).toFixed(2)}/{subscriptionStore.currentPlan.billing_interval}
+								{subscriptionPlan.hours_per_month} hour{subscriptionPlan.hours_per_month !== 1 ? 's' : ''} per month
+								• ${(subscriptionPlan.price_cents / 100).toFixed(2)}/{subscriptionPlan.billing_interval}
 							</p>
-							{#if subscriptionStore.usage}
+							{#if usageData}
 								<div class="mt-2">
 									<p class="text-sm text-muted-foreground">
-										{subscriptionStore.usage.hours_used.toFixed(1)} / {subscriptionStore.usage.hours_limit} hours used this month
+										{usageData.hours_used.toFixed(1)} / {usageData.hours_limit} hours used this month
 									</p>
 									<div class="w-full bg-muted rounded-full h-2 mt-1">
 										<div 
 											class="bg-primary h-2 rounded-full transition-all" 
-											style="width: {Math.min(subscriptionStore.usage.usage_percentage, 100)}%"
+											style="width: {Math.min(usageData.usage_percentage, 100)}%"
 										></div>
 									</div>
 								</div>
@@ -340,6 +453,7 @@
 					</button>
 				</div>
 			{:else}
+				<!-- No Active Plan -->
 				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
 					<div class="flex items-center gap-4">
 						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
