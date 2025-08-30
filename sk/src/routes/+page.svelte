@@ -29,7 +29,11 @@
 		},
 		{
 			question: 'Is my content secure?',
-			answer: 'Yes. Everything processes locally on your computer - nothing uploads to servers.'
+			answer: 'Yes. Only audio transits through our secure servers for transcription - your videos remain on your device. We never store, back up, or retain any of your content.'
+		},
+		{
+			question: 'Do you backup my data?',
+			answer: 'No. We do not backup any of your content. Audio files and transcripts are processed and immediately deleted from our servers. Videos never leave your device.'
 		}
 	];
 </script>
@@ -130,7 +134,7 @@
 			</div>
 			<div>
 				<h3 class="font-semibold mb-2">AI Script Reordering</h3>
-				<p class="text-muted-foreground text-sm">Transform clips into coherent scripts using any AI model.</p>
+				<p class="text-muted-foreground text-sm">Transform clips into coherent scripts using advanced AI.</p>
 			</div>
 			<div>
 				<h3 class="font-semibold mb-2">Speech Transcription</h3>
@@ -145,23 +149,24 @@
 				<p class="text-muted-foreground text-sm">Export optimized scripts ready for your editor.</p>
 			</div>
 			<div>
-				<h3 class="font-semibold mb-2">60-80% Time Savings</h3>
-				<p class="text-muted-foreground text-sm">Dramatically reduce post-production time.</p>
+				<h3 class="font-semibold mb-2">Privacy First</h3>
+				<p class="text-muted-foreground text-sm">Videos stay on your device. Audio is securely processed with no storage or backup.</p>
 			</div>
 		</div>
 	</div>
 </section>
 
-<!-- AI Flexibility -->
+<!-- AI Technology -->
 <section class="py-20 border-t">
 	<div class="max-w-4xl mx-auto px-6">
-		<h2 class="text-3xl md:text-4xl font-bold mb-8">Your AI, Your Choice</h2>
-		<p class="text-muted-foreground mb-6">Works with any AI model through OpenRouter. Bring your own API keys.</p>
+		<h2 class="text-3xl md:text-4xl font-bold mb-8">Powered by Advanced AI</h2>
+		<p class="text-muted-foreground mb-6">Get access to the best AI models for optimal script optimization and content analysis.</p>
 		<ul class="space-y-2 text-sm">
-			<li>• No subscription lock-in</li>
-			<li>• Control your AI costs and usage</li>
-			<li>• 200+ AI Models (GPT-4, Claude, Gemini, Llama)</li>
-			<li>• Built-in guide walks you through setup in under 5 minutes</li>
+			<li>• State-of-the-art language models for script reordering</li>
+			<li>• Advanced speech recognition for perfect transcripts</li>
+			<li>• Video processing stays on your device - only audio is processed remotely</li>
+			<li>• No data storage or backup - transcripts and audio are never retained</li>
+			<li>• Continuously updated with the latest AI advances</li>
 		</ul>
 	</div>
 </section>

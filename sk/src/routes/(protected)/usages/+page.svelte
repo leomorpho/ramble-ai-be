@@ -226,8 +226,8 @@
 			<div class="flex items-start gap-3 text-sm text-green-800 dark:text-green-200">
 				<Shield class="h-4 w-4 mt-0.5 flex-shrink-0" />
 				<p>
-					<strong>Privacy First:</strong> All audio and video processing happens locally on your machine. 
-					We never store your files on our servers - only processing metadata is tracked for usage statistics.
+					<strong>Privacy First:</strong> Videos stay on your device. Only audio is sent to our servers for transcription and is never stored or backed up. 
+					We only track processing metadata for usage statistics.
 				</p>
 			</div>
 		</div>
