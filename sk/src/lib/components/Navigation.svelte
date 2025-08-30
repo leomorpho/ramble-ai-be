@@ -41,14 +41,17 @@
 			</div>
 
 			<div class="flex items-center space-x-2">
+				<!-- Download button - visible for all users -->
+				<a
+					href="/downloads"
+					class="bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 inline-flex items-center space-x-2 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-all duration-150"
+					title="Download Desktop App"
+				>
+					<Download class="h-4 w-4 transition-transform duration-150 active:rotate-12" />
+					<span class="hidden sm:inline">Download</span>
+				</a>
+
 				{#if isLoggedIn}
-					<a
-						href="/downloads"
-						class="hover:bg-accent hover:text-accent-foreground inline-flex h-9 w-9 items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors"
-						title="Download App"
-					>
-						<Download class="h-4 w-4" />
-					</a>
 					<a
 						href="/usages"
 						class="hover:bg-accent hover:text-accent-foreground inline-flex h-9 w-9 items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors"

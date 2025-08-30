@@ -4,7 +4,8 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { Download, Monitor, Apple, Loader2, ExternalLink, AlertCircle } from 'lucide-svelte';
+	import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '$lib/components/ui/table';
+	import { Download, Monitor, Apple, Loader2, ExternalLink, AlertCircle, Calendar, HardDrive, Shield, Star } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 
 	interface AppVersion {
@@ -41,7 +42,7 @@
 	const userPlatform = detectPlatform();
 
 	// Platform icons and names
-	const platformInfo = {
+	const platformInfo: Record<string, { icon: any; name: string; ext: string }> = {
 		windows: { icon: Monitor, name: 'Windows', ext: '.exe' },
 		macos: { icon: Apple, name: 'macOS', ext: '.dmg' },
 		linux: { icon: Monitor, name: 'Linux', ext: '.AppImage' }
@@ -62,7 +63,16 @@
 			}
 			grouped[version.platform].push(version);
 		});
+		// Sort each platform's versions by created date (newest first)
+		Object.keys(grouped).forEach(platform => {
+			grouped[platform].sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+		});
 		return grouped;
+	}
+
+	// Format date for display
+	function formatDate(dateString: string): string {
+		return new Date(dateString).toLocaleDateString();
 	}
 
 	// Load versions from PocketBase
@@ -71,8 +81,8 @@
 			loading = true;
 			error = null;
 			
-			const records = await pb.collection('app_versions').getList<AppVersion>(1, 50, {
-				filter: 'is_released = true && is_latest = true',
+			const records = await pb.collection('app_versions').getList<AppVersion>(1, 200, {
+				filter: 'is_released = true',
 				sort: '-created'
 			});
 			
@@ -111,7 +121,8 @@
 	});
 
 	let groupedVersions = $derived(groupVersionsByPlatform(versions));
-	let userPlatformVersions = $derived(groupedVersions[userPlatform] || []);
+	let userPlatformVersions = $derived(groupedVersions[userPlatform]?.filter(v => v.is_latest) || []);
+	let latestVersions = $derived(versions.filter(v => v.is_latest));
 </script>
 
 <svelte:head>
@@ -209,12 +220,12 @@
 			</div>
 		{/if}
 
-		<!-- All platforms -->
-		<div>
-			<h2 class="text-2xl font-semibold mb-4">All platforms</h2>
+		<!-- Latest versions cards -->
+		<div class="mb-8">
+			<h2 class="text-2xl font-semibold mb-4">Latest versions</h2>
 			<div class="grid gap-6 md:grid-cols-3">
 				{#each ['windows', 'macos', 'linux'] as platform}
-					{@const platformVersions = groupedVersions[platform] || []}
+					{@const platformVersions = groupedVersions[platform]?.filter(v => v.is_latest) || []}
 					<Card class={userPlatform === platform ? 'opacity-60' : ''}>
 						<CardHeader>
 							<div class="flex items-center justify-between">
@@ -267,6 +278,87 @@
 					</Card>
 				{/each}
 			</div>
+		</div>
+
+		<!-- All downloads table -->
+		<div class="mb-8">
+			<h2 class="text-2xl font-semibold mb-4">All downloads</h2>
+			<Card>
+				<CardContent class="p-0">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead class="w-[100px]">Platform</TableHead>
+								<TableHead>Version</TableHead>
+								<TableHead>Architecture</TableHead>
+								<TableHead>Size</TableHead>
+								<TableHead>Released</TableHead>
+								<TableHead>Downloads</TableHead>
+								<TableHead class="text-right">Action</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{#each versions as version}
+								<TableRow class={version.is_latest ? "bg-muted/30" : ""}>
+									<TableCell class="font-medium">
+										<div class="flex items-center gap-2">
+											<svelte:component this={platformInfo[version.platform].icon} class="h-4 w-4" />
+											<span class="capitalize">{version.platform}</span>
+										</div>
+									</TableCell>
+									<TableCell>
+										<div class="flex items-center gap-2">
+											<span class="font-mono">{version.version}</span>
+											{#if version.is_latest}
+												<Badge variant="default" class="text-xs">
+													<Star class="w-2 h-2 mr-1" />
+													Latest
+												</Badge>
+											{:else if version.is_prerelease}
+												<Badge variant="secondary" class="text-xs">Beta</Badge>
+											{/if}
+										</div>
+									</TableCell>
+									<TableCell>
+										<code class="text-xs bg-muted px-1 py-0.5 rounded">
+											{version.architecture}
+										</code>
+									</TableCell>
+									<TableCell>
+										<div class="flex items-center gap-1 text-sm text-muted-foreground">
+											<HardDrive class="w-3 h-3" />
+											{formatFileSize(version.file_size)}
+										</div>
+									</TableCell>
+									<TableCell>
+										<div class="flex items-center gap-1 text-sm text-muted-foreground">
+											<Calendar class="w-3 h-3" />
+											{formatDate(version.created)}
+										</div>
+									</TableCell>
+									<TableCell class="text-muted-foreground text-sm">
+										{version.download_count.toLocaleString()}
+									</TableCell>
+									<TableCell class="text-right">
+										<Button 
+											size="sm" 
+											variant="outline"
+											onclick={() => handleDownload(version)}
+											disabled={downloading === version.id}
+										>
+											{#if downloading === version.id}
+												<Loader2 class="h-3 w-3 animate-spin" />
+											{:else}
+												<Download class="h-3 w-3" />
+											{/if}
+										</Button>
+									</TableCell>
+								</TableRow>
+							{/each}
+						</TableBody>
+					</Table>
+				</CardContent>
+			</Card>
 		</div>
 
 		<!-- System requirements -->
