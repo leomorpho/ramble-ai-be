@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import DownloadButton from '$lib/components/DownloadButton.svelte';
-	import { Home, LogIn, LogOut, User, CreditCard, Crown, BarChart } from 'lucide-svelte';
+	import { Home, LogIn, LogOut, User, CreditCard, Crown, BarChart, Download } from 'lucide-svelte';
 	import type { AuthModel } from 'pocketbase';
 	import { config } from '$lib/config.js';
 	import { getAvatarUrl } from '$lib/files.js';
@@ -42,6 +42,13 @@
 
 			<div class="flex items-center space-x-2">
 				{#if isLoggedIn}
+					<a
+						href="/downloads"
+						class="hover:bg-accent hover:text-accent-foreground inline-flex h-9 w-9 items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors"
+						title="Download App"
+					>
+						<Download class="h-4 w-4" />
+					</a>
 					<a
 						href="/usages"
 						class="hover:bg-accent hover:text-accent-foreground inline-flex h-9 w-9 items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors"

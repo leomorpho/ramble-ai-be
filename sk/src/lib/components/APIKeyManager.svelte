@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
-  import { Key, Copy, Plus, AlertTriangle, CheckCircle } from 'lucide-svelte';
+  import { Key, Copy, Plus, AlertTriangle, CheckCircle, Shield } from 'lucide-svelte';
+  import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
   import { pb } from '$lib/pocketbase.js';
   import { authStore } from '$lib/stores/authClient.svelte.js';
   import { onMount } from 'svelte';
@@ -313,33 +314,38 @@
 </div>
 
 <!-- Confirmation Dialog -->
-{#if showConfirmDialog}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-labelledby="confirm-title">
-    <div class="bg-background rounded-lg border border-border p-6 max-w-md w-full mx-4 shadow-xl">
-      <div class="mb-4">
-        <h3 id="confirm-title" class="text-lg font-semibold text-foreground mb-2">Replace API Key?</h3>
-        <p class="text-sm text-muted-foreground">
-          Generating a new API key will permanently replace your current key. Your current key will stop working immediately and cannot be recovered.
-          <br><br>
-          Are you sure you want to continue?
-        </p>
+<AlertDialog.Root bind:open={showConfirmDialog}>
+  <AlertDialog.Content class="sm:max-w-[425px]">
+    <AlertDialog.Header>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+          <Shield class="w-5 h-5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <AlertDialog.Title class="text-left">Reveal live API key</AlertDialog.Title>
+        </div>
       </div>
-      <div class="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          onclick={() => showConfirmDialog = false}
-          disabled={isGenerating}
-        >
-          Cancel
-        </Button>
-        <Button
-          onclick={generateAPIKey}
-          disabled={isGenerating}
-          class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-        >
-          {isGenerating ? 'Generating...' : 'Replace Key'}
-        </Button>
-      </div>
+    </AlertDialog.Header>
+    <div class="py-4">
+      <AlertDialog.Description class="text-left leading-relaxed">
+        This key can only be revealed once to keep your account secure. If you lose it, you must rotate the key or create another one.
+        <br><br>
+        <strong>Your current API key will stop working immediately</strong> and cannot be recovered.
+        <br><br>
+        Are you sure you want to reveal your new key?
+      </AlertDialog.Description>
     </div>
-  </div>
-{/if}
+    <AlertDialog.Footer class="flex-row justify-end gap-2">
+      <AlertDialog.Cancel disabled={isGenerating}>
+        Cancel
+      </AlertDialog.Cancel>
+      <AlertDialog.Action 
+        onclick={generateAPIKey}
+        disabled={isGenerating}
+        class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      >
+        {isGenerating ? 'Generating...' : 'Reveal Key'}
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

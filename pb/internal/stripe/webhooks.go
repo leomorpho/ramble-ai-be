@@ -28,8 +28,27 @@ func HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase) error {
 
 	// Verify webhook signature
 	endpointSecret := os.Getenv("STRIPE_SECRET_WHSEC")
-	event, err := webhook.ConstructEvent(payload, e.Request.Header.Get("Stripe-Signature"), endpointSecret)
+	
+	// Debug logging for environment variable
+	if endpointSecret == "" {
+		log.Printf("[WEBHOOK_DEBUG] STRIPE_SECRET_WHSEC environment variable is empty or not set")
+		return e.JSON(http.StatusBadRequest, map[string]string{"error": "webhook secret not configured"})
+	} else {
+		// Log first and last 6 characters for verification (security safe)
+		secretLen := len(endpointSecret)
+		if secretLen > 12 {
+			log.Printf("[WEBHOOK_DEBUG] STRIPE_SECRET_WHSEC loaded: %s...%s (length: %d)", 
+				endpointSecret[:6], endpointSecret[secretLen-6:], secretLen)
+		} else {
+			log.Printf("[WEBHOOK_DEBUG] STRIPE_SECRET_WHSEC loaded (length: %d)", secretLen)
+		}
+	}
+	
+	event, err := webhook.ConstructEventWithOptions(payload, e.Request.Header.Get("Stripe-Signature"), endpointSecret, webhook.ConstructEventOptions{
+		IgnoreAPIVersionMismatch: true,
+	})
 	if err != nil {
+		log.Printf("[WEBHOOK_DEBUG] Signature verification failed: %v", err)
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 

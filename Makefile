@@ -1,4 +1,4 @@
-.PHONY: help dev dev-backend dev-frontend be be-pocketbase be-stripe nuke-db storybook build test lint format clean install deps check kill-pb
+.PHONY: help dev dev-backend dev-frontend pb be-pocketbase stripe nuke-db storybook build test lint format clean install deps check kill-pb
 
 # Default target
 help: ## Show this help message
@@ -6,19 +6,21 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 # Development commands
-dev: mailpit-up ## Start full development environment (backend + frontend + webhooks + mailpit)
+dev: mailpit-up ## Start development environment (backend + frontend, no Stripe)
 	@echo "🚀 Starting full development environment..."
 	@echo "📧 Mailpit (email testing): http://localhost:8025"
 	@echo "🔧 PocketBase (backend): http://localhost:8090"
-	@echo "💳 Stripe webhooks: forwarding to localhost:8090/stripe"
 	@echo "🌐 SvelteKit (frontend): http://localhost:5174"
-	@make -j3 dev-backend be-stripe dev-frontend
+	@echo "💡 To forward Stripe webhooks, run 'make stripe' in another terminal"
+	@make -j2 dev-backend dev-frontend
 
-be: ## Start PocketBase backend + Stripe webhooks (use NUKE=1 to delete database first)
-	@echo "🚀 Starting PocketBase backend + Stripe webhook forwarding..."
+pb: mailpit-up ## Start PocketBase backend + SvelteKit frontend (use NUKE=1 to delete database first)
+	@echo "🚀 Starting PocketBase + SvelteKit..."
+	@echo "📧 Mailpit (email testing): http://localhost:8025"
 	@echo "🔧 PocketBase (backend): http://localhost:8090"
-	@echo "💳 Stripe webhooks: forwarding to localhost:8090/stripe"
-	@make -j2 be-pocketbase be-stripe
+	@echo "🌐 SvelteKit (frontend): http://localhost:5174"
+	@echo "💡 To forward Stripe webhooks, run 'make stripe' in another terminal"
+	@make -j2 dev-backend dev-frontend
 
 be-pocketbase: ## Start only PocketBase backend (use NUKE=1 to delete database first)
 	@cd pb && \
@@ -30,7 +32,7 @@ be-pocketbase: ## Start only PocketBase backend (use NUKE=1 to delete database f
 	@echo "🚀 Starting PocketBase backend..."
 	@cd pb && ./pocketbase serve --dev --http 0.0.0.0:8090
 
-be-stripe: ## Start Stripe webhook forwarding
+stripe: ## Start Stripe webhook forwarding (run in separate terminal)
 	@echo "💳 Starting Stripe webhook forwarding..."
 	@if ! command -v stripe >/dev/null 2>&1; then \
 		echo "⚠️  Stripe CLI not found. Install it from: https://stripe.com/docs/stripe-cli"; \

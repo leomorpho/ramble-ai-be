@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Download } from 'lucide-svelte';
-	import { config } from '$lib/config.js';
+	import { goto } from '$app/navigation';
 
 	interface Props {
 		text: string;
@@ -20,7 +20,7 @@
 	}: Props = $props();
 
 	const handleClick = () => {
-		window.open(config.download.url, '_blank');
+		goto('/downloads');
 	};
 
 	// Icon size based on button size

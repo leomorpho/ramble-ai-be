@@ -2225,5 +2225,187 @@
         ],
         "indexes": [],
         "system": false
+    },
+    {
+        "id": "pbc_app_versions",
+        "listRule": "is_released = true || @request.auth.role = 'admin'",
+        "viewRule": "is_released = true || @request.auth.role = 'admin'",
+        "createRule": "@request.auth.role = 'admin'",
+        "updateRule": "@request.auth.role = 'admin'",
+        "deleteRule": "@request.auth.role = 'admin'",
+        "name": "app_versions",
+        "type": "base",
+        "fields": [
+            {
+                "autogeneratePattern": "[a-z0-9]{15}",
+                "hidden": false,
+                "id": "text3208210256",
+                "max": 15,
+                "min": 15,
+                "name": "id",
+                "pattern": "^[a-z0-9]+$",
+                "presentable": false,
+                "primaryKey": true,
+                "required": true,
+                "system": true,
+                "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "text_version",
+                "max": 50,
+                "min": 1,
+                "name": "version",
+                "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9]+)?$",
+                "presentable": true,
+                "required": true,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "select_platform",
+                "maxSelect": 1,
+                "name": "platform",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "select",
+                "values": ["windows", "macos", "linux"]
+            },
+            {
+                "hidden": false,
+                "id": "select_architecture",
+                "maxSelect": 1,
+                "name": "architecture",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "select",
+                "values": ["amd64", "arm64", "386", "universal"]
+            },
+            {
+                "hidden": false,
+                "id": "url_download",
+                "exceptDomains": [],
+                "name": "download_url",
+                "onlyDomains": [],
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "url"
+            },
+            {
+                "hidden": false,
+                "id": "number_file_size",
+                "max": null,
+                "min": 1,
+                "name": "file_size",
+                "noDecimal": true,
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "number"
+            },
+            {
+                "hidden": false,
+                "id": "text_checksum",
+                "max": 64,
+                "min": 64,
+                "name": "checksum_sha256",
+                "pattern": "^[a-f0-9]{64}$",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "convertURLs": true,
+                "hidden": false,
+                "id": "editor_release_notes",
+                "maxSize": 50000,
+                "name": "release_notes",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "editor"
+            },
+            {
+                "hidden": false,
+                "id": "bool_is_latest",
+                "name": "is_latest",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "bool"
+            },
+            {
+                "hidden": false,
+                "id": "bool_is_released",
+                "name": "is_released",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "bool"
+            },
+            {
+                "hidden": false,
+                "id": "bool_is_prerelease",
+                "name": "is_prerelease",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "bool"
+            },
+            {
+                "hidden": false,
+                "id": "text_min_os",
+                "max": 100,
+                "min": 0,
+                "name": "minimum_os_version",
+                "pattern": "",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "number_downloads",
+                "max": null,
+                "min": 0,
+                "name": "download_count",
+                "noDecimal": true,
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "number"
+            },
+            {
+                "hidden": false,
+                "id": "autodate_created",
+                "name": "created",
+                "onCreate": true,
+                "onUpdate": false,
+                "presentable": false,
+                "system": false,
+                "type": "autodate"
+            },
+            {
+                "hidden": false,
+                "id": "autodate_updated",
+                "name": "updated",
+                "onCreate": true,
+                "onUpdate": true,
+                "presentable": false,
+                "system": false,
+                "type": "autodate"
+            }
+        ],
+        "indexes": [
+            "CREATE INDEX `idx_platform_latest` ON `app_versions` (`platform`, `is_latest`, `is_released`)",
+            "CREATE INDEX `idx_version` ON `app_versions` (`version`)"
+        ],
+        "system": false
     }
 ]
