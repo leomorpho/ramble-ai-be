@@ -12,7 +12,7 @@ describe('SignupForm UI Tests', () => {
 		const heading = page.getByRole('heading', { name: 'Create your account' });
 		const nameInput = page.getByPlaceholder('John Doe');
 		const emailInput = page.getByPlaceholder('m@example.com');
-		const passwordInput = page.getByPlaceholder('Create a password (min 6 characters)');
+		const passwordInput = page.getByPlaceholder('Create a password (min 8 characters)');
 		const confirmPasswordInput = page.getByPlaceholder('Confirm your password');
 		const createButton = page.getByRole('button', { name: 'Create Account' });
 
@@ -40,7 +40,7 @@ describe('SignupForm UI Tests', () => {
 		const createButton = page.getByRole('button', { name: 'Create Account' });
 		const nameInput = page.getByPlaceholder('John Doe');
 		const emailInput = page.getByPlaceholder('m@example.com');
-		const passwordInput = page.getByPlaceholder('Create a password (min 6 characters)');
+		const passwordInput = page.getByPlaceholder('Create a password (min 8 characters)');
 		const confirmPasswordInput = page.getByPlaceholder('Confirm your password');
 		
 		// Verify form elements are present and properly configured
@@ -62,14 +62,14 @@ describe('SignupForm UI Tests', () => {
 		// Fill form with short password
 		await page.getByPlaceholder('John Doe').fill('Test User');
 		await page.getByPlaceholder('m@example.com').fill('test@example.com');
-		await page.getByPlaceholder('Create a password (min 6 characters)').fill('12345');
+		await page.getByPlaceholder('Create a password (min 8 characters)').fill('12345');
 		await page.getByPlaceholder('Confirm your password').fill('12345');
 
 		const createButton = page.getByRole('button', { name: 'Create Account' });
 		await createButton.click();
 
 		// Should show password length error
-		const errorMessage = page.getByText('Password must be at least 6 characters long');
+		const errorMessage = page.getByText('Password must be at least 8 characters long');
 		await expect.element(errorMessage).toBeInTheDocument();
 	});
 
@@ -79,7 +79,7 @@ describe('SignupForm UI Tests', () => {
 		// Fill form with mismatched passwords
 		await page.getByPlaceholder('John Doe').fill('Test User');
 		await page.getByPlaceholder('m@example.com').fill('test@example.com');
-		await page.getByPlaceholder('Create a password (min 6 characters)').fill('password123');
+		await page.getByPlaceholder('Create a password (min 8 characters)').fill('password123');
 		await page.getByPlaceholder('Confirm your password').fill('different123');
 
 		const createButton = page.getByRole('button', { name: 'Create Account' });
@@ -96,7 +96,7 @@ describe('SignupForm UI Tests', () => {
 		// All inputs should be required
 		const nameInput = page.getByPlaceholder('John Doe');
 		const emailInput = page.getByPlaceholder('m@example.com');
-		const passwordInput = page.getByPlaceholder('Create a password (min 6 characters)');
+		const passwordInput = page.getByPlaceholder('Create a password (min 8 characters)');
 		const confirmPasswordInput = page.getByPlaceholder('Confirm your password');
 
 		await expect.element(nameInput).toHaveAttribute('required');
@@ -136,7 +136,7 @@ describe('SignupForm UI Tests', () => {
 		// Fill form with invalid email
 		await page.getByPlaceholder('John Doe').fill('Test User');
 		await page.getByPlaceholder('m@example.com').fill('invalid-email');
-		await page.getByPlaceholder('Create a password (min 6 characters)').fill('password123');
+		await page.getByPlaceholder('Create a password (min 8 characters)').fill('password123');
 		await page.getByPlaceholder('Confirm your password').fill('password123');
 
 		const createButton = page.getByRole('button', { name: 'Create Account' });
@@ -152,7 +152,7 @@ describe('SignupForm UI Tests', () => {
 		// Form should be properly structured
 		const nameInput = page.getByPlaceholder('John Doe');
 		const emailInput = page.getByPlaceholder('m@example.com');
-		const passwordInput = page.getByPlaceholder('Create a password (min 6 characters)');
+		const passwordInput = page.getByPlaceholder('Create a password (min 8 characters)');
 		const confirmPasswordInput = page.getByPlaceholder('Confirm your password');
 		const createButton = page.getByRole('button', { name: 'Create Account' });
 
@@ -170,7 +170,7 @@ describe('SignupForm UI Tests', () => {
 		// Check that labels are properly associated with inputs
 		const nameInput = page.getByPlaceholder('John Doe');
 		const emailInput = page.getByPlaceholder('m@example.com');
-		const passwordInput = page.getByPlaceholder('Create a password (min 6 characters)');
+		const passwordInput = page.getByPlaceholder('Create a password (min 8 characters)');
 		const confirmPasswordInput = page.getByPlaceholder('Confirm your password');
 
 		// All inputs should have required attribute

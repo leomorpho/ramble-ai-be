@@ -42,8 +42,13 @@
 			return;
 		}
 
-		if (password.length < 6) {
-			error = 'Password must be at least 6 characters long';
+		if (password.length < 8) {
+			error = 'Password must be at least 8 characters long';
+			return;
+		}
+
+		if (password.length > 71) {
+			error = 'Password must be 71 characters or less';
 			return;
 		}
 
@@ -140,7 +145,7 @@
 					<Input
 						id="password-{formId}"
 						type="password"
-						placeholder="Create a password (min 6 characters)"
+						placeholder="Create a password (min 8 characters)"
 						bind:value={password}
 						disabled={isLoading}
 						required
