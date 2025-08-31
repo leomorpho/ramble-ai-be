@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { authStore } from '$lib/stores/authClient.svelte';
+	import { pb } from '$lib/pocketbase';
 	import { goto } from '$app/navigation';
 	import { Mail, ArrowLeft } from 'lucide-svelte';
 	import { page } from '$app/stores';

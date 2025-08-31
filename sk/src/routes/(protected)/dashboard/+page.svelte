@@ -271,6 +271,7 @@
 				<div class="flex items-center justify-between mb-6">
 					<h3 class="text-lg font-semibold">Profile</h3>
 					<button
+						type="button"
 						onclick={() => isEditingProfile = !isEditingProfile}
 						class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
 						disabled={isSavingPersonal}
@@ -374,6 +375,7 @@
 								</div>
 							{:else}
 								<button
+									type="button"
 									onclick={() => goto('/pricing')}
 									class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium w-fit"
 								>
@@ -456,6 +458,7 @@
 						</div>
 					</div>
 					<button
+						type="button"
 						onclick={() => goto('/pricing')}
 						class="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted transition-colors"
 					>
@@ -477,6 +480,7 @@
 						</div>
 					</div>
 					<button
+						type="button"
 						onclick={() => goto('/pricing')}
 						class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
 					>
@@ -494,6 +498,7 @@
 						</div>
 					</div>
 					<button
+						type="button"
 						onclick={() => goto('/pricing')}
 						class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
 					>
