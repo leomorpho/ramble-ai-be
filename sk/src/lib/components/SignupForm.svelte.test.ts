@@ -105,16 +105,17 @@ describe('SignupForm UI Tests', () => {
 		await expect.element(confirmPasswordInput).toHaveAttribute('required');
 	});
 
-	it('should show OAuth options', async () => {
-		render(SignupForm);
+	// OAuth buttons are currently commented out in the component
+	// it('should show OAuth options', async () => {
+	// 	render(SignupForm);
 
-		// Should show OAuth buttons
-		const appleButton = page.getByRole('button', { name: 'Continue with Apple' });
-		const googleButton = page.getByRole('button', { name: 'Continue with Google' });
+	// 	// Should show OAuth buttons
+	// 	const appleButton = page.getByRole('button', { name: 'Continue with Apple' });
+	// 	const googleButton = page.getByRole('button', { name: 'Continue with Google' });
 
-		await expect.element(appleButton).toBeInTheDocument();
-		await expect.element(googleButton).toBeInTheDocument();
-	});
+	// 	await expect.element(appleButton).toBeInTheDocument();
+	// 	await expect.element(googleButton).toBeInTheDocument();
+	// });
 
 	it('should show terms and privacy policy links', async () => {
 		render(SignupForm);

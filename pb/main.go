@@ -339,6 +339,18 @@ func configureEmailSettings(app *pocketbase.PocketBase) error {
 	// Configure email templates
 	app.Settings().Meta.SenderName = emailFromName
 	app.Settings().Meta.SenderAddress = emailFrom
+	app.Settings().Meta.AppName = "Ramble AI"
+	
+	// Set AppUrl for template substitution
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		if isDevelopment {
+			frontendURL = "http://localhost:5173"
+		} else {
+			frontendURL = "https://ramble.goosebyteshq.com"
+		}
+	}
+	app.Settings().Meta.AppURL = frontendURL
 
 	if isDevelopment {
 		// Development: Use SMTP with Mailpit

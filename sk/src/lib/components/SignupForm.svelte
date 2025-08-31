@@ -166,7 +166,8 @@
 					{isLoading ? 'Creating Account...' : 'Create Account'}
 				</Button>
 			</div>
-			<div
+			<!-- TODO: Apple/Google OAuth - will want this later -->
+			<!-- <div
 				class="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t"
 			>
 				<span class="bg-background text-muted-foreground relative z-10 px-2"> Or </span>
@@ -190,7 +191,7 @@
 					</svg>
 					Continue with Google
 				</Button>
-			</div>
+			</div> -->
 		</div>
 		</form>
 		<div class="text-muted-foreground text-center text-xs text-balance">
