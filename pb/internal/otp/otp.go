@@ -23,12 +23,12 @@ import (
 func GenerateOTP() (string, error) {
 	max := big.NewInt(999999)
 	min := big.NewInt(100000)
-	
+
 	n, err := rand.Int(rand.Reader, max.Sub(max, min).Add(max, big.NewInt(1)))
 	if err != nil {
 		return "", err
 	}
-	
+
 	return fmt.Sprintf("%06d", n.Add(n, min).Int64()), nil
 }
 
@@ -88,7 +88,7 @@ func VerifyOTP(app core.App, userID, otpCode, purpose string) error {
 	// Check if OTP has expired
 	expiresAtField := record.Get("expires_at")
 	var expiresAt time.Time
-	
+
 	// Handle both types.DateTime and time.Time
 	switch v := expiresAtField.(type) {
 	case types.DateTime:
@@ -98,7 +98,7 @@ func VerifyOTP(app core.App, userID, otpCode, purpose string) error {
 	default:
 		return fmt.Errorf("invalid expires_at field type")
 	}
-	
+
 	if time.Now().After(expiresAt) {
 		return fmt.Errorf("OTP has expired")
 	}
@@ -114,21 +114,21 @@ func VerifyOTP(app core.App, userID, otpCode, purpose string) error {
 
 // SendOTPEmail sends an OTP via email using appropriate method based on environment
 func SendOTPEmail(app core.App, email, otpCode, purpose string) error {
-	isDevelopment := os.Getenv("DEVELOPMENT") == "true"
-	
-	if isDevelopment {
-		// Development: Use PocketBase's built-in SMTP (Mailpit)
-		return sendOTPEmailSMTP(app, email, otpCode, purpose)
-	} else {
-		// Production: Use Resend HTTP API
-		return sendOTPEmailResend(app, email, otpCode, purpose)
-	}
+	// isDevelopment := os.Getenv("DEVELOPMENT") == "true"
+
+	// if isDevelopment {
+	// 	// Development: Use PocketBase's built-in SMTP (Mailpit)
+	// 	return sendOTPEmailSMTP(app, email, otpCode, purpose)
+	// } else {
+	// Production: Use Resend HTTP API
+	return sendOTPEmailResend(app, email, otpCode, purpose)
+	// }
 }
 
 // sendOTPEmailSMTP sends OTP via SMTP (development with Mailpit)
 func sendOTPEmailSMTP(app core.App, email, otpCode, purpose string) error {
 	subject, body := getOTPEmailContent(otpCode, purpose)
-	
+
 	message := &mailer.Message{
 		From: mail.Address{
 			Address: app.Settings().Meta.SenderAddress,
@@ -140,16 +140,16 @@ func sendOTPEmailSMTP(app core.App, email, otpCode, purpose string) error {
 	}
 
 	log.Printf("[OTP] Sending email via SMTP to %s for purpose: %s", email, purpose)
-	
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	done := make(chan error, 1)
 	go func() {
 		done <- app.NewMailClient().Send(message)
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -170,9 +170,9 @@ func sendOTPEmailResend(app core.App, email, otpCode, purpose string) error {
 	if resendAPIKey == "" {
 		return fmt.Errorf("RESEND_API_KEY not configured")
 	}
-	
+
 	subject, body := getOTPEmailContent(otpCode, purpose)
-	
+
 	// Resend API payload
 	payload := map[string]interface{}{
 		"from":    fmt.Sprintf("%s <%s>", app.Settings().Meta.SenderName, app.Settings().Meta.SenderAddress),
@@ -180,27 +180,27 @@ func sendOTPEmailResend(app core.App, email, otpCode, purpose string) error {
 		"subject": subject,
 		"html":    body,
 	}
-	
+
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal email payload: %v", err)
 	}
-	
+
 	log.Printf("[OTP] Sending email via Resend API to %s for purpose: %s", email, purpose)
-	
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.resend.com/emails", bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+resendAPIKey)
-	
+
 	// Send request
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -209,7 +209,7 @@ func sendOTPEmailResend(app core.App, email, otpCode, purpose string) error {
 		return fmt.Errorf("failed to send email via Resend: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		// Read response body for debugging
 		var respBody bytes.Buffer
@@ -217,7 +217,7 @@ func sendOTPEmailResend(app core.App, email, otpCode, purpose string) error {
 		log.Printf("[OTP] Resend API error - Status: %d, Body: %s", resp.StatusCode, respBody.String())
 		return fmt.Errorf("Resend API returned status %d", resp.StatusCode)
 	}
-	
+
 	log.Printf("[OTP] Resend email sent successfully to %s", email)
 	return nil
 }
@@ -225,7 +225,7 @@ func sendOTPEmailResend(app core.App, email, otpCode, purpose string) error {
 // getOTPEmailContent returns subject and HTML body for OTP emails
 func getOTPEmailContent(otpCode, purpose string) (string, string) {
 	var subject, body string
-	
+
 	switch purpose {
 	case "signup_verification":
 		subject = "Verify Your Account - OTP Code"
@@ -274,7 +274,7 @@ func getOTPEmailContent(otpCode, purpose string) (string, string) {
 		<p>This code will expire in 10 minutes.</p>
 		`, otpCode)
 	}
-	
+
 	return subject, body
 }
 
@@ -289,7 +289,7 @@ func SendOTPHandler(e *core.RequestEvent, app core.App) error {
 	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 	e.Response.Header().Set("Access-Control-Allow-Credentials", "true")
-	
+
 	// Handle preflight OPTIONS requests
 	if e.Request.Method == "OPTIONS" {
 		e.Response.WriteHeader(204)
@@ -341,7 +341,7 @@ func VerifyOTPHandler(e *core.RequestEvent, app core.App) error {
 	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 	e.Response.Header().Set("Access-Control-Allow-Credentials", "true")
-	
+
 	// Handle preflight OPTIONS requests
 	if e.Request.Method == "OPTIONS" {
 		e.Response.WriteHeader(204)

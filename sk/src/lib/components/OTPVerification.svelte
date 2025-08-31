@@ -24,7 +24,10 @@
 	let timeLeft = $state(600); // 10 minutes in seconds
 	let canResend = $state(false);
 	let timer = $state<NodeJS.Timeout | null>(null);
-	let hasAttemptedSend = $state(false); // Prevent automatic retry loops
+	
+	// Bulletproof guards to prevent infinite loops
+	let hasAttemptedInitialSend = $state(false); // Never resets - prevents any automatic retries
+	let sendAttemptCount = $state(0); // Track total attempts for debugging
 
 	// Format time remaining
 	let timeFormatted = $derived.by(() => {
@@ -55,12 +58,13 @@
 		}, 1000);
 	}
 
-	// Send OTP on component mount (only once)
+	// Send OTP on component mount (EXACTLY ONCE - no retries)
 	$effect(() => {
-		if (!hasAttemptedSend) {
-			hasAttemptedSend = true;
+		if (!hasAttemptedInitialSend) {
+			hasAttemptedInitialSend = true; // Set immediately to prevent any retriggers
+			console.log(`[OTP] Component mounted for ${email}, attempting initial OTP send...`);
 			sendOTP();
-			// Start timer even if send fails - user should still be able to try again
+			// Start timer regardless of send success/failure
 			startTimer();
 		}
 	});
@@ -75,11 +79,21 @@
 		};
 	});
 
-	// Send OTP code
+	// Send OTP code - bulletproof version
 	async function sendOTP() {
+		sendAttemptCount++;
+		console.log(`[OTP] Send attempt #${sendAttemptCount} for ${email}`);
+
 		// Prevent multiple simultaneous requests
 		if (isSendingOTP) {
-			console.log('OTP send already in progress, skipping...');
+			console.warn('[OTP] Send already in progress, skipping duplicate request');
+			return;
+		}
+
+		// Safety check for manual resends - only allow if timer allows it
+		if (sendAttemptCount > 1 && !canResend) {
+			console.warn('[OTP] Manual resend blocked - timer not expired yet');
+			error = 'Please wait before requesting another code';
 			return;
 		}
 
@@ -88,7 +102,7 @@
 		success = null;
 
 		try {
-			console.log(`[OTP] Attempting to send OTP to ${email} for ${purpose}`);
+			console.log(`[OTP] Making fetch request to ${pb.baseUrl}/send-otp for ${purpose}`);
 			const response = await fetch(`${pb.baseUrl}/send-otp`, {
 				method: 'POST',
 				headers: {
@@ -103,14 +117,20 @@
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}));
+				console.error(`[OTP] Server error ${response.status}: ${response.statusText}`, errorData);
 				throw new Error(errorData.message || `Server error: ${response.status} ${response.statusText}`);
 			}
 
 			success = `Verification code sent to ${email}`;
-			console.log(`[OTP] Successfully sent OTP to ${email}`);
+			console.log(`[OTP] ✅ Successfully sent OTP #${sendAttemptCount} to ${email}`);
 		} catch (err: any) {
-			console.error('[OTP] Send error:', err);
+			console.error(`[OTP] ❌ Send attempt #${sendAttemptCount} failed:`, err);
 			error = err.message || 'Failed to send OTP';
+			
+			// Log but don't retry automatically - this is the key fix
+			if (sendAttemptCount === 1) {
+				console.error('[OTP] Initial send failed. User can manually resend if needed.');
+			}
 		} finally {
 			isSendingOTP = false;
 		}
