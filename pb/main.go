@@ -458,7 +458,7 @@ func ensureSubscriptionConstraints(app *pocketbase.PocketBase) error {
 	
 	indexSQL := `
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_user_active_subscription 
-		ON user_subscriptions(user_id) 
+		ON current_user_subscriptions(user_id) 
 		WHERE status = 'active'
 	`
 	

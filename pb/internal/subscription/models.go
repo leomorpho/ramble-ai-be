@@ -62,6 +62,8 @@ type UpdateSubscriptionParams struct {
 	CanceledAt               *time.Time
 	TrialEnd                 *time.Time
 	PendingPlanID            *string    // For storing scheduled plan changes
+	PendingChangeEffectiveDate *time.Time // When the pending change will take effect
+	PendingChangeReason      *string    // Reason for the pending change (upgrade/downgrade/cancellation)
 }
 
 // SubscriptionQuery represents query parameters for finding subscriptions

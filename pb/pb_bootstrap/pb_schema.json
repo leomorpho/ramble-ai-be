@@ -2091,7 +2091,7 @@
         "createRule": "@request.auth.collectionName = \"_superusers\"",
         "updateRule": "@request.auth.collectionName = \"_superusers\"",
         "deleteRule": "@request.auth.collectionName = \"_superusers\"",
-        "name": "user_subscriptions",
+        "name": "current_user_subscriptions",
         "type": "base",
         "fields": [
             {
@@ -2269,6 +2269,237 @@
                 "required": false,
                 "system": false,
                 "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "select_pending_reason",
+                "maxSelect": 1,
+                "name": "pending_change_reason",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "upgrade",
+                    "downgrade",
+                    "cancellation"
+                ]
+            },
+            {
+                "hidden": false,
+                "id": "autodate2990389176",
+                "name": "created",
+                "onCreate": true,
+                "onUpdate": false,
+                "presentable": false,
+                "system": false,
+                "type": "autodate"
+            },
+            {
+                "hidden": false,
+                "id": "autodate3332085495",
+                "name": "updated",
+                "onCreate": true,
+                "onUpdate": true,
+                "presentable": false,
+                "system": false,
+                "type": "autodate"
+            }
+        ],
+        "indexes": [
+            "CREATE UNIQUE INDEX `idx_current_user_subscriptions_user_id` ON `current_user_subscriptions` (user_id)"
+        ],
+        "system": false
+    },
+    {
+        "id": "pbc_subscription_history",
+        "listRule": "@request.auth.id != \"\" && user_id = @request.auth.id",
+        "viewRule": "@request.auth.id != \"\" && user_id = @request.auth.id",
+        "createRule": "@request.auth.collectionName = \"_superusers\"",
+        "updateRule": "@request.auth.collectionName = \"_superusers\"",
+        "deleteRule": "@request.auth.collectionName = \"_superusers\"",
+        "name": "subscription_history",
+        "type": "base",
+        "fields": [
+            {
+                "autogeneratePattern": "[a-z0-9]{15}",
+                "hidden": false,
+                "id": "text3208210256",
+                "max": 15,
+                "min": 15,
+                "name": "id",
+                "pattern": "^[a-z0-9]+$",
+                "presentable": false,
+                "primaryKey": true,
+                "required": true,
+                "system": true,
+                "type": "text"
+            },
+            {
+                "cascadeDelete": false,
+                "collectionId": "_pb_users_auth_",
+                "hidden": false,
+                "id": "relation2809058197",
+                "maxSelect": 1,
+                "minSelect": 0,
+                "name": "user_id",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "relation"
+            },
+            {
+                "cascadeDelete": false,
+                "collectionId": "pbc_2775741768",
+                "hidden": false,
+                "id": "relation3902341787",
+                "maxSelect": 1,
+                "minSelect": 0,
+                "name": "plan_id",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "relation"
+            },
+            {
+                "autogeneratePattern": "",
+                "hidden": false,
+                "id": "text3051075425",
+                "max": 255,
+                "min": 0,
+                "name": "provider_subscription_id",
+                "pattern": "",
+                "presentable": false,
+                "primaryKey": false,
+                "required": false,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "autogeneratePattern": "",
+                "hidden": false,
+                "id": "text1234567890",
+                "max": 255,
+                "min": 0,
+                "name": "provider_price_id",
+                "pattern": "",
+                "presentable": false,
+                "primaryKey": false,
+                "required": false,
+                "system": false,
+                "type": "text"
+            },
+            {
+                "hidden": false,
+                "id": "select1234567890",
+                "maxSelect": 1,
+                "name": "payment_provider",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "stripe",
+                    "paddle",
+                    "polar"
+                ]
+            },
+            {
+                "hidden": false,
+                "id": "select2063623452",
+                "maxSelect": 1,
+                "name": "status",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "active",
+                    "cancelled",
+                    "past_due",
+                    "trialing"
+                ]
+            },
+            {
+                "hidden": false,
+                "id": "date1365271345",
+                "max": "",
+                "min": "",
+                "name": "current_period_start",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "date3574916857",
+                "max": "",
+                "min": "",
+                "name": "current_period_end",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "bool780795615",
+                "name": "cancel_at_period_end",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "bool"
+            },
+            {
+                "hidden": false,
+                "id": "date1494311345",
+                "max": "",
+                "min": "",
+                "name": "canceled_at",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "date1218751048",
+                "max": "",
+                "min": "",
+                "name": "trial_end",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "date_replaced_at",
+                "max": "",
+                "min": "",
+                "name": "replaced_at",
+                "presentable": false,
+                "required": true,
+                "system": false,
+                "type": "date"
+            },
+            {
+                "hidden": false,
+                "id": "select_replacement_reason",
+                "maxSelect": 1,
+                "name": "replacement_reason",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "select",
+                "values": [
+                    "plan_change",
+                    "cancellation",
+                    "payment_failure",
+                    "upgrade",
+                    "downgrade"
+                ]
             },
             {
                 "hidden": false,

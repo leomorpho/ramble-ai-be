@@ -33,6 +33,10 @@ type Repository interface {
 	// Bulk operations
 	DeactivateAllUserSubscriptions(userID string) error
 	CleanupDuplicateSubscriptions(userID string) error
+	
+	// Subscription history operations
+	MoveSubscriptionToHistory(subscriptionRecord *core.Record, reason string) (*core.Record, error)
+	GetUserSubscriptionHistory(userID string) ([]*core.Record, error)
 }
 
 // PocketBaseRepository implements Repository using PocketBase
@@ -47,9 +51,9 @@ func NewRepository(app core.App) Repository {
 
 // CreateSubscription creates a new subscription record
 func (r *PocketBaseRepository) CreateSubscription(params CreateSubscriptionParams) (*core.Record, error) {
-	collection, err := r.app.FindCollectionByNameOrId("user_subscriptions")
+	collection, err := r.app.FindCollectionByNameOrId("current_user_subscriptions")
 	if err != nil {
-		return nil, fmt.Errorf("failed to find user_subscriptions collection: %w", err)
+		return nil, fmt.Errorf("failed to find current_user_subscriptions collection: %w", err)
 	}
 
 	record := core.NewRecord(collection)
@@ -85,7 +89,7 @@ func (r *PocketBaseRepository) CreateSubscription(params CreateSubscriptionParam
 
 // UpdateSubscription updates an existing subscription record
 func (r *PocketBaseRepository) UpdateSubscription(subscriptionID string, params UpdateSubscriptionParams) (*core.Record, error) {
-	record, err := r.app.FindRecordById("user_subscriptions", subscriptionID)
+	record, err := r.app.FindRecordById("current_user_subscriptions", subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find subscription %s: %w", subscriptionID, err)
 	}
@@ -130,7 +134,7 @@ func (r *PocketBaseRepository) UpdateSubscription(subscriptionID string, params 
 
 // GetSubscription retrieves a subscription by ID
 func (r *PocketBaseRepository) GetSubscription(subscriptionID string) (*core.Record, error) {
-	record, err := r.app.FindRecordById("user_subscriptions", subscriptionID)
+	record, err := r.app.FindRecordById("current_user_subscriptions", subscriptionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get subscription %s: %w", subscriptionID, err)
 	}
@@ -139,7 +143,7 @@ func (r *PocketBaseRepository) GetSubscription(subscriptionID string) (*core.Rec
 
 // DeleteSubscription removes a subscription record
 func (r *PocketBaseRepository) DeleteSubscription(subscriptionID string) error {
-	record, err := r.app.FindRecordById("user_subscriptions", subscriptionID)
+	record, err := r.app.FindRecordById("current_user_subscriptions", subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to find subscription %s: %w", subscriptionID, err)
 	}
@@ -169,7 +173,7 @@ func (r *PocketBaseRepository) FindSubscription(query SubscriptionQuery) (*core.
 		params["plan_id"] = *query.PlanID
 	}
 
-	record, err := r.app.FindFirstRecordByFilter("user_subscriptions", filter, params)
+	record, err := r.app.FindFirstRecordByFilter("current_user_subscriptions", filter, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find subscription: %w", err)
 	}
@@ -188,7 +192,7 @@ func (r *PocketBaseRepository) FindActiveSubscription(userID string) (*core.Reco
 
 // FindSubscriptionByProviderID finds a subscription by Stripe subscription ID
 func (r *PocketBaseRepository) FindSubscriptionByProviderID(stripeSubID string) (*core.Record, error) {
-	record, err := r.app.FindFirstRecordByFilter("user_subscriptions", "provider_subscription_id = {:stripe_sub_id}", map[string]any{
+	record, err := r.app.FindFirstRecordByFilter("current_user_subscriptions", "provider_subscription_id = {:stripe_sub_id}", map[string]any{
 		"stripe_sub_id": stripeSubID,
 	})
 	if err != nil {
@@ -199,7 +203,7 @@ func (r *PocketBaseRepository) FindSubscriptionByProviderID(stripeSubID string) 
 
 // FindAllUserSubscriptions retrieves all subscriptions for a user
 func (r *PocketBaseRepository) FindAllUserSubscriptions(userID string) ([]*core.Record, error) {
-	records, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id}", "-created", 100, 0, map[string]any{
+	records, err := r.app.FindRecordsByFilter("current_user_subscriptions", "user_id = {:user_id}", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -210,7 +214,7 @@ func (r *PocketBaseRepository) FindAllUserSubscriptions(userID string) ([]*core.
 
 // FindActiveSubscriptionsCount counts active subscriptions for a user
 func (r *PocketBaseRepository) FindActiveSubscriptionsCount(userID string) (int, error) {
-	records, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
+	records, err := r.app.FindRecordsByFilter("current_user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -277,7 +281,7 @@ func (r *PocketBaseRepository) GetAvailableUpgrades(currentPlanID string) ([]*co
 
 // DeactivateAllUserSubscriptions marks all user subscriptions as cancelled
 func (r *PocketBaseRepository) DeactivateAllUserSubscriptions(userID string) error {
-	subscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
+	subscriptions, err := r.app.FindRecordsByFilter("current_user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -298,7 +302,7 @@ func (r *PocketBaseRepository) DeactivateAllUserSubscriptions(userID string) err
 
 // CleanupDuplicateSubscriptions ensures only one active subscription per user
 func (r *PocketBaseRepository) CleanupDuplicateSubscriptions(userID string) error {
-	activeSubscriptions, err := r.app.FindRecordsByFilter("user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
+	activeSubscriptions, err := r.app.FindRecordsByFilter("current_user_subscriptions", "user_id = {:user_id} && status = 'active'", "-created", 100, 0, map[string]any{
 		"user_id": userID,
 	})
 	if err != nil {
@@ -321,4 +325,52 @@ func (r *PocketBaseRepository) CleanupDuplicateSubscriptions(userID string) erro
 
 	log.Printf("Cleaned up %d duplicate subscriptions for user %s", len(activeSubscriptions)-1, userID)
 	return nil
+}
+
+// MoveSubscriptionToHistory moves a current subscription to the history table
+func (r *PocketBaseRepository) MoveSubscriptionToHistory(subscriptionRecord *core.Record, reason string) (*core.Record, error) {
+	// Get subscription history collection
+	historyCollection, err := r.app.FindCollectionByNameOrId("subscription_history")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscription_history collection: %w", err)
+	}
+	
+	// Create history record with current subscription data
+	historyRecord := core.NewRecord(historyCollection)
+	
+	// Copy all fields except pending fields and IDs
+	historyRecord.Set("user_id", subscriptionRecord.GetString("user_id"))
+	historyRecord.Set("plan_id", subscriptionRecord.GetString("plan_id"))
+	historyRecord.Set("provider_subscription_id", subscriptionRecord.GetString("provider_subscription_id"))
+	historyRecord.Set("provider_price_id", subscriptionRecord.GetString("provider_price_id"))
+	historyRecord.Set("payment_provider", subscriptionRecord.GetString("payment_provider"))
+	historyRecord.Set("status", subscriptionRecord.GetString("status"))
+	historyRecord.Set("current_period_start", subscriptionRecord.Get("current_period_start"))
+	historyRecord.Set("current_period_end", subscriptionRecord.Get("current_period_end"))
+	historyRecord.Set("cancel_at_period_end", subscriptionRecord.GetBool("cancel_at_period_end"))
+	historyRecord.Set("canceled_at", subscriptionRecord.Get("canceled_at"))
+	historyRecord.Set("trial_end", subscriptionRecord.Get("trial_end"))
+	
+	// Set history-specific fields
+	historyRecord.Set("replaced_at", time.Now())
+	historyRecord.Set("replacement_reason", reason)
+	
+	// Save to history
+	if err := r.app.Save(historyRecord); err != nil {
+		return nil, fmt.Errorf("failed to save subscription to history: %w", err)
+	}
+	
+	log.Printf("Moved subscription %s to history with reason: %s", subscriptionRecord.Id, reason)
+	return historyRecord, nil
+}
+
+// GetUserSubscriptionHistory retrieves all historical subscriptions for a user
+func (r *PocketBaseRepository) GetUserSubscriptionHistory(userID string) ([]*core.Record, error) {
+	records, err := r.app.FindRecordsByFilter("subscription_history", "user_id = {:user_id}", "-replaced_at", 100, 0, map[string]any{
+		"user_id": userID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find subscription history: %w", err)
+	}
+	return records, nil
 }

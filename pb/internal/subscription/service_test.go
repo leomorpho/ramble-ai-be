@@ -157,6 +157,20 @@ func (m *MockRepository) CleanupDuplicateSubscriptions(userID string) error {
 	return nil
 }
 
+// MoveSubscriptionToHistory moves a subscription to history (new method for audit trail)
+func (m *MockRepository) MoveSubscriptionToHistory(subscriptionRecord *core.Record, reason string) (*core.Record, error) {
+	// Mock implementation - just return a history record
+	historyRecord := &core.Record{}
+	historyRecord.Id = "history_" + subscriptionRecord.Id
+	return historyRecord, nil
+}
+
+// GetUserSubscriptionHistory retrieves historical subscriptions for a user (new method for audit trail)
+func (m *MockRepository) GetUserSubscriptionHistory(userID string) ([]*core.Record, error) {
+	// Mock implementation - return empty history for tests
+	return []*core.Record{}, nil
+}
+
 // Test helper functions
 func createTestService() Service {
 	repo := NewMockRepository()
