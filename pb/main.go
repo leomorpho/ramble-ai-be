@@ -16,6 +16,7 @@ import (
 
 	aihandlers "pocketbase/internal/ai"
 	bannerhandlers "pocketbase/internal/banners"
+	"pocketbase/internal/jobs"
 	otphandlers "pocketbase/internal/otp"
 	"pocketbase/internal/payment"
 	paymenthandlers "pocketbase/internal/payment"
@@ -131,6 +132,10 @@ func main() {
 			}
 		}
 
+		// Register scheduled jobs (cron tasks)
+		if err := jobs.RegisterJobs(app); err != nil {
+			log.Printf("Warning: Failed to register scheduled jobs: %v", err)
+		}
 
 		// Payment routes (provider-agnostic)
 		se.Router.POST("/api/payment/checkout", func(e *core.RequestEvent) error {
