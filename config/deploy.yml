@@ -22,9 +22,9 @@ proxy:
   host: api.ramble.goosebyteshq.com
   # PocketBase runs on port 8090
   app_port: 8090
-  # Configure health check to use custom health endpoint (avoiding PocketBase built-in conflict)
+  # Configure health check to use PocketBase's built-in health endpoint
   healthcheck:
-    path: /api/healthcheck
+    path: /api/health
     timeout: 5
     interval: 3
 

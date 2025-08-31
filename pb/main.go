@@ -154,14 +154,8 @@ func main() {
 		})
 
 
-		// Health check endpoint for Kamal deployment - using custom path to avoid conflict
-		se.Router.GET("/api/healthcheck", func(e *core.RequestEvent) error {
-			return e.JSON(200, map[string]interface{}{
-				"status": "ok",
-				"timestamp": time.Now().Unix(),
-				"version": "1.0.0",
-			})
-		})
+		// Note: Using PocketBase's built-in /api/health endpoint for Kamal health checks
+		// No custom health endpoint needed as PocketBase provides one out of the box
 
 		// Subscription management routes (use PocketBase SDK + RLS for GET operations)
 		se.Router.POST("/api/subscription/cancel", func(e *core.RequestEvent) error {
