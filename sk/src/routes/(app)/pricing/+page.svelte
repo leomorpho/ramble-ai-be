@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.ts';
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
-	import { createCheckoutSession, changePlan } from '$lib/payment.ts';
+	import { createCheckoutSession, cancelSubscription } from '$lib/payment.ts';
 	import { config } from '$lib/config.ts';
 	import { Loader2, Check, Crown, Zap, AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';
@@ -65,13 +65,20 @@
 		
 		checkoutLoading = pendingCancelPlan;
 		try {
-			await changePlan(pendingCancelPlan);
+			const result = await cancelSubscription();
 			// Refresh subscription data to reflect the change
 			subscriptionStore.refresh();
 			showCancelDialog = false;
 			pendingCancelPlan = null;
+			
+			// Show success message with period end information
+			if (result && result.period_end_date) {
+				const periodEndDate = new Date(result.period_end_date).toLocaleDateString();
+				errorMessage = `Subscription cancelled. You'll retain access to premium features until ${periodEndDate}.`;
+				showErrorDialog = true; // Reusing error dialog for success message
+			}
 		} catch (error) {
-			console.error('Error changing plan:', error);
+			console.error('Error cancelling subscription:', error);
 			errorMessage = 'Failed to cancel subscription. Please try again.';
 			showErrorDialog = true;
 			showCancelDialog = false;
@@ -335,7 +342,7 @@
 		<DialogHeader>
 			<DialogTitle>Cancel Subscription</DialogTitle>
 			<DialogDescription>
-				Are you sure you want to cancel your subscription? You'll be moved to the Free plan and will lose access to premium features, but you can upgrade again anytime.
+				Are you sure you want to cancel your subscription? You'll retain access to all premium features until the end of your current billing period, then automatically switch to the Free plan. You can upgrade again anytime.
 			</DialogDescription>
 		</DialogHeader>
 		<DialogFooter class="gap-2">

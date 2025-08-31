@@ -40,7 +40,7 @@
 		
 		try {
 			// Get user's active subscription
-			const subscriptions = await pb.collection('user_subscriptions').getFullList({
+			const subscriptions = await pb.collection('current_user_subscriptions').getFullList({
 				filter: `user_id = "${authStore.user.id}" && status = "active"`,
 				sort: '-created'
 			}, {

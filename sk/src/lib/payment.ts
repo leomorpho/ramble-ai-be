@@ -77,7 +77,26 @@ export async function createPortalLink() {
 	return url;
 }
 
-// Helper to change plan directly (for downgrades/cancellations)
+// Helper to cancel subscription (preserves benefits until period end)
+export async function cancelSubscription() {
+	if (!browser) return null;
+	
+	const user = authStore.user;
+	if (!user) {
+		throw new Error('User must be logged in to cancel subscription');
+	}
+
+	try {
+		const result = await pb.send('/api/subscription/cancel', {
+			method: 'POST'
+		});
+		return result;
+	} catch (error: any) {
+		throw new Error(error?.message || 'Failed to cancel subscription');
+	}
+}
+
+// Helper to change plan directly (for paid plan upgrades only)
 export async function changePlan(planId: string) {
 	if (!browser) return null;
 	

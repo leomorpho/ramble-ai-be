@@ -207,7 +207,7 @@ class SubscriptionStore {
 
 		try {
 			// Get user's subscription
-			const subscriptions = await pb.collection('user_subscriptions').getFullList<UserSubscription>({
+			const subscriptions = await pb.collection('current_user_subscriptions').getFullList<UserSubscription>({
 				filter: `user_id = "${authStore.user.id}"`,
 				sort: '-created'
 			});

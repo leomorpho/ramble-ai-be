@@ -158,6 +158,10 @@ func main() {
 		// })
 
 		// Subscription management routes (use PocketBase SDK + RLS for GET operations)
+		se.Router.POST("/api/subscription/cancel", func(e *core.RequestEvent) error {
+			return subscriptionhandlers.CancelSubscriptionHandler(e, app, subscriptionService)
+		})
+		
 		se.Router.POST("/api/subscription/switch-to-free", func(e *core.RequestEvent) error {
 			return subscriptionhandlers.SwitchToFreePlanHandler(e, app, subscriptionService)
 		})
@@ -221,12 +225,13 @@ func main() {
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
 		log.Printf("New user created: %s, assigning free plan...", e.Record.Id)
 		
-		// Initialize subscription service for this hook
-		subscriptionRepo := subscription.NewRepository(app)
-		subscriptionService := subscription.NewService(subscriptionRepo)
+		// Initialize clean subscription service for this hook
+		adapter := subscription.NewPocketBaseAdapter(app)
+		validator := subscription.NewCleanValidator()
+		cleanService := subscription.NewCleanSubscriptionService(adapter, validator)
 		
-		// Create free plan subscription for the new user
-		err := subscriptionService.CreateFreePlanSubscription(e.Record.Id)
+		// Create free plan subscription for the new user using clean service
+		err := cleanService.CreateFreePlanSubscription(e.Record.Id)
 		if err != nil {
 			log.Printf("Warning: Failed to create free plan for user %s: %v", e.Record.Id, err)
 			// Don't fail user registration if subscription creation fails

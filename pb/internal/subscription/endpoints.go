@@ -18,27 +18,47 @@ func ChangePlanHandler(e *core.RequestEvent, app core.App, subscriptionService S
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	// Check if switching to free plan
+	// This endpoint should only be used for actual plan changes, not cancellations
+	// For cancellations, clients should use /api/subscription/cancel endpoint
+	
 	plan, err := app.FindRecordById("subscription_plans", req.PlanID)
 	if err != nil {
 		return e.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
 	}
 
+	// Check if this is a free plan (cancellation attempt)
 	if plan.GetInt("price_cents") == 0 {
-		// Switch to free plan
-		_, err := subscriptionService.SwitchToFreePlan(req.UserID)
-		if err != nil {
-			return e.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to switch to free plan: %v", err)})
-		}
-		return e.JSON(http.StatusOK, map[string]interface{}{"success": true, "message": "Successfully switched to free plan"})
+		return e.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Use /api/subscription/cancel endpoint for subscription cancellations",
+			"hint": "This preserves your benefits until the billing period ends",
+		})
 	}
 
-	// For paid plans, redirect to checkout
+	// For paid plan changes, use checkout flow
 	return e.JSON(http.StatusBadRequest, map[string]string{"error": "Use checkout for paid plan changes"})
 }
 
 // Note: GET operations (subscription info, plans, usage stats, plan upgrades) 
 // should use PocketBase JavaScript SDK with RLS rules instead of custom endpoints.
+
+// CancelSubscriptionHandler handles requests to cancel a subscription properly via Stripe
+func CancelSubscriptionHandler(e *core.RequestEvent, app core.App, subscriptionService Service) error {
+	// Get user info from auth (standard PocketBase pattern)
+	user := e.Auth
+	if user == nil {
+		return e.JSON(http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
+	}
+
+	// Cancel subscription via Stripe (sets cancel_at_period_end=true)
+	result, err := subscriptionService.CancelSubscription(user.Id)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to cancel subscription: %v", err),
+		})
+	}
+
+	return e.JSON(http.StatusOK, result)
+}
 
 // SwitchToFreePlanHandler handles requests to switch to free plan
 func SwitchToFreePlanHandler(e *core.RequestEvent, app core.App, subscriptionService Service) error {
