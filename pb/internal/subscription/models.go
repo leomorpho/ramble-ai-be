@@ -61,6 +61,7 @@ type UpdateSubscriptionParams struct {
 	CancelAtPeriodEnd        *bool
 	CanceledAt               *time.Time
 	TrialEnd                 *time.Time
+	PendingPlanID            *string    // For storing scheduled plan changes
 }
 
 // SubscriptionQuery represents query parameters for finding subscriptions
@@ -107,4 +108,14 @@ type BusinessRuleError struct {
 
 func (e BusinessRuleError) Error() string {
 	return e.Message
+}
+
+// ChangePlanResult represents the result of a plan change operation
+type ChangePlanResult struct {
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
+	ChangeType    string `json:"change_type"`    // "upgrade" or "downgrade"
+	NewPlan       string `json:"new_plan"`
+	EffectiveDate string `json:"effective_date"` // "immediately" or formatted date
+	PendingChange bool   `json:"pending_change,omitempty"`
 }

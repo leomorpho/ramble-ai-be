@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -16,8 +17,9 @@ import (
 	aihandlers "pocketbase/internal/ai"
 	bannerhandlers "pocketbase/internal/banners"
 	otphandlers "pocketbase/internal/otp"
-	stripehandlers "pocketbase/internal/stripe"
-	versionshandlers "pocketbase/internal/versions"
+	"pocketbase/internal/payment"
+	"pocketbase/internal/seeder"
+	"pocketbase/internal/subscription"
 	"pocketbase/webauthn"
 )
 
@@ -72,7 +74,59 @@ func main() {
 		return be.Next()
 	})
 
+	// Helper functions for endpoint handlers
+	createCheckoutSession := func(e *core.RequestEvent, app *pocketbase.PocketBase, paymentService *payment.Service) error {
+		// TODO: Implement checkout session creation using payment service
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	createPortalLink := func(e *core.RequestEvent, app *pocketbase.PocketBase, paymentService *payment.Service) error {
+		// TODO: Implement portal link creation using payment service  
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	changePlan := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement plan change using subscription service
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	getUserSubscriptionInfo := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement get user subscription info
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	getAvailablePlans := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement get available plans
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	getUsageStats := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement get usage stats
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	getPlanUpgrades := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement get plan upgrades
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+	
+	switchToFreePlan := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
+		// TODO: Implement switch to free plan
+		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
+	}
+
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Initialize services for route handlers
+		paymentService, err := payment.NewStripeService()
+		if err != nil {
+			log.Printf("Warning: Failed to initialize payment service: %v", err)
+		}
+		subscriptionRepo := subscription.NewRepository(app)
+		subscriptionService := subscription.NewService(subscriptionRepo)
+		
+		// Avoid unused variable errors
+		_ = paymentService
+		_ = subscriptionService
 
 		// Configure request body size limit for large audio files
 		se.Server.MaxHeaderBytes = 1 << 20  // 1MB for headers
@@ -89,24 +143,20 @@ func main() {
 		// Log Whisper configuration for audio processing
 		logWhisperConfiguration()
 
-		// Only seed data in development mode
+		// Seed development data if in development mode
 		isDevelopment := os.Getenv("DEVELOPMENT") == "true"
 		if isDevelopment {
-			// Seed development data if in development mode
 			if err := aihandlers.SeedDevelopmentData(app); err != nil {
 				log.Printf("Warning: Failed to seed development data: %v", err)
 			}
+		}
+		
+		// Run all seeding functions through centralized seeder
+		if err := seeder.SeedAll(app); err != nil {
+			log.Printf("Warning: Failed to run seeding: %v", err)
+		}
 
-			// Seed subscription plans after users are created
-			if err := stripehandlers.SeedSubscriptionPlans(app); err != nil {
-				log.Printf("Warning: Failed to seed subscription plans: %v", err)
-			}
-
-			// Seed app versions for download testing
-			if err := versionshandlers.SeedAppVersions(app); err != nil {
-				log.Printf("Warning: Failed to seed app versions: %v", err)
-			}
-		} else {
+		if !isDevelopment {
 			// Production mode: Create superuser if none exists
 			if err := createSuperuserIfNeeded(app); err != nil {
 				log.Printf("Warning: Failed to create superuser: %v", err)
@@ -117,40 +167,40 @@ func main() {
 		// Payment routes (provider-agnostic)
 		se.Router.POST("/api/payment/checkout", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return stripehandlers.CreateCheckoutSession(e, app)
+			return createCheckoutSession(e, app, paymentService)
 		})
 
 		se.Router.POST("/api/payment/portal", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return stripehandlers.CreatePortalLink(e, app)
+			return createPortalLink(e, app, paymentService)
 		})
 
 		se.Router.POST("/api/payment/change-plan", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return stripehandlers.ChangePlan(e, app)
+			return changePlan(e, app, subscriptionService)
 		})
 
 		// Payment webhook routes
 		// IMPORTANT: When adding/removing webhook endpoints, update README.md payment provider section
 		se.Router.POST("/api/webhooks/stripe", func(e *core.RequestEvent) error {
-			return stripehandlers.HandleWebhook(e, app)
+			return paymentService.HandleWebhook(e, app)
 		})
 
 		// Legacy Stripe routes (maintain backward compatibility)
 		se.Router.POST("/create-checkout-session", func(e *core.RequestEvent) error {
-			return stripehandlers.CreateCheckoutSession(e, app)
+			return createCheckoutSession(e, app, paymentService)
 		})
 
 		se.Router.POST("/create-portal-link", func(e *core.RequestEvent) error {
-			return stripehandlers.CreatePortalLink(e, app)
+			return createPortalLink(e, app, paymentService)
 		})
 
 		se.Router.POST("/stripe", func(e *core.RequestEvent) error {
-			return stripehandlers.HandleWebhook(e, app)
+			return paymentService.HandleWebhook(e, app)
 		})
 		
 		se.Router.POST("/change-plan", func(e *core.RequestEvent) error {
-			return stripehandlers.ChangePlan(e, app)
+			return changePlan(e, app, subscriptionService)
 		})
 
 		// Health check endpoint for Kamal deployment
@@ -164,23 +214,23 @@ func main() {
 
 		// Subscription management routes
 		se.Router.GET("/api/subscription/info", func(e *core.RequestEvent) error {
-			return stripehandlers.GetUserSubscriptionInfo(e, app)
+			return getUserSubscriptionInfo(e, app, subscriptionService)
 		})
 
 		se.Router.GET("/api/subscription/plans", func(e *core.RequestEvent) error {
-			return stripehandlers.GetAvailablePlans(e, app)
+			return getAvailablePlans(e, app, subscriptionService)
 		})
 
 		se.Router.GET("/api/subscription/usage", func(e *core.RequestEvent) error {
-			return stripehandlers.GetUsageStats(e, app)
+			return getUsageStats(e, app, subscriptionService)
 		})
 
 		se.Router.GET("/api/subscription/upgrades", func(e *core.RequestEvent) error {
-			return stripehandlers.GetPlanUpgrades(e, app)
+			return getPlanUpgrades(e, app, subscriptionService)
 		})
 
 		se.Router.POST("/api/subscription/switch-to-free", func(e *core.RequestEvent) error {
-			return stripehandlers.SwitchToFreePlan(e, app)
+			return switchToFreePlan(e, app, subscriptionService)
 		})
 
 		// OTP routes
@@ -242,8 +292,12 @@ func main() {
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
 		log.Printf("New user created: %s, assigning free plan...", e.Record.Id)
 		
+		// Initialize subscription service for this hook
+		subscriptionRepo := subscription.NewRepository(app)
+		subscriptionService := subscription.NewService(subscriptionRepo)
+		
 		// Create free plan subscription for the new user
-		err := stripehandlers.CreateFreePlanSubscription(app, e.Record.Id)
+		err := subscriptionService.CreateFreePlanSubscription(e.Record.Id)
 		if err != nil {
 			log.Printf("Warning: Failed to create free plan for user %s: %v", e.Record.Id, err)
 			// Don't fail user registration if subscription creation fails

@@ -157,15 +157,15 @@ func (r *PocketBaseRepository) FindSubscription(query SubscriptionQuery) (*core.
 	params := map[string]any{"user_id": query.UserID}
 
 	if query.Status != nil {
-		filter += " AND status = {:status}"
+		filter += " && status = {:status}"
 		params["status"] = string(*query.Status)
 	}
 	if query.ProviderSubscriptionID != nil {
-		filter += " AND provider_subscription_id = {:stripe_sub_id}"
+		filter += " && provider_subscription_id = {:stripe_sub_id}"
 		params["stripe_sub_id"] = *query.ProviderSubscriptionID
 	}
 	if query.PlanID != nil {
-		filter += " AND plan_id = {:plan_id}"
+		filter += " && plan_id = {:plan_id}"
 		params["plan_id"] = *query.PlanID
 	}
 

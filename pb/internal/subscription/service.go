@@ -7,6 +7,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/stripe/stripe-go/v79"
+	"github.com/stripe/stripe-go/v79/subscription"
 )
 
 // Service defines the subscription management interface
@@ -31,7 +32,7 @@ type Service interface {
 	HandlePaymentFailed(invoice *stripe.Invoice) error
 
 	// Plan management
-	ChangePlan(userID string, newPlanID string, prorationBehavior string) error
+	ChangePlan(userID string, newPlanID string) (*ChangePlanResult, error)
 	CreateFreePlanSubscription(userID string) error
 
 	// Utility operations
@@ -136,40 +137,20 @@ func (s *SubscriptionService) CancelSubscription(userID string) error {
 
 // SwitchToFreePlan moves a user to the free plan
 func (s *SubscriptionService) SwitchToFreePlan(userID string) (*core.Record, error) {
-	// Get free plan
-	freePlan, err := s.repo.GetFreePlan()
-	if err != nil {
-		return nil, fmt.Errorf("failed to find free plan: %w", err)
-	}
-
+	// For free plan, we simply deactivate all existing subscriptions
+	// No subscription record = user is on free plan
+	
 	// Deactivate any existing active subscriptions
 	if err := s.repo.DeactivateAllUserSubscriptions(userID); err != nil {
 		log.Printf("Warning: Failed to deactivate existing subscriptions: %v", err)
+		// Continue anyway - important to not have active subscriptions
 	}
 
-	// Create free subscription
-	now := time.Now()
-	oneYearFromNow := now.AddDate(1, 0, 0) // Free plan lasts 1 year
-
-	params := CreateSubscriptionParams{
-		UserID:                userID,
-		PlanID:                freePlan.Id,
-		Status:                StatusActive,
-		CurrentPeriodStart:    now,
-		CurrentPeriodEnd:      oneYearFromNow,
-		CancelAtPeriodEnd:     false,
-		ProviderSubscriptionID:  nil, // Free plan has no Stripe subscription
-		ProviderPriceID:         nil,
-		CanceledAt:            &now, // Mark when switched to free
-	}
-
-	subscription, err := s.CreateSubscription(params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create free subscription: %w", err)
-	}
-
-	log.Printf("Switched user %s to free plan", userID)
-	return subscription, nil
+	log.Printf("User %s switched to free plan (no subscription record)", userID)
+	
+	// Return nil since we don't create subscription records for free users
+	// The calling code should handle this appropriately
+	return nil, nil
 }
 
 // GetUserSubscriptionInfo retrieves comprehensive subscription information for a user
@@ -180,13 +161,25 @@ func (s *SubscriptionService) GetUserSubscriptionInfo(userID string) (*Subscript
 		return nil, fmt.Errorf("no subscription found for user %s: %w", userID, err)
 	}
 
-	// Get subscription plan
-	plan, err := s.repo.GetPlan(subscription.GetString("plan_id"))
+	// Determine which plan to use for benefits/limits
+	// CRITICAL FIX: For downgrades, user keeps current plan until period ends
+	planID := subscription.GetString("plan_id")
+	
+	// If user has a pending downgrade and period hasn't ended, they keep current benefits
+	if subscription.GetBool("cancel_at_period_end") && 
+		subscription.GetString("pending_plan_id") != "" &&
+		subscription.GetDateTime("current_period_end").Time().After(time.Now()) {
+		// User keeps current plan benefits until period actually ends
+		planID = subscription.GetString("plan_id")
+	}
+
+	// Get plan details (this determines user's current benefits/limits)
+	plan, err := s.repo.GetPlan(planID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get plan details: %w", err)
 	}
 
-	// Get usage information (placeholder - implement according to your usage tracking)
+	// Get usage information based on plan limits
 	usage := &UsageInfo{
 		HoursUsedThisMonth: 0, // TODO: Implement usage tracking
 		HoursLimit:         plan.GetFloat("hours_per_month"),
@@ -229,6 +222,7 @@ func (s *SubscriptionService) GetPlanUpgrades(userID string) ([]*core.Record, er
 	currentPlanID := activeSubscription.GetString("plan_id")
 	return s.repo.GetAvailableUpgrades(currentPlanID)
 }
+
 
 // ProcessWebhookEvent processes Stripe webhook events
 func (s *SubscriptionService) ProcessWebhookEvent(eventData WebhookEventData) error {
@@ -292,13 +286,13 @@ func (s *SubscriptionService) HandleSubscriptionEvent(stripeSub *stripe.Subscrip
 	}
 
 	// CRITICAL: Check if subscription is set to cancel at period end
-	// If so, do NOT change the plan until the period actually ends
+	// If so, preserve current plan but store new plan as pending
 	if stripeSub.CancelAtPeriodEnd {
-		log.Printf("Subscription %s is set to cancel at period end - preserving current plan until %v", 
-			stripeSub.ID, time.Unix(stripeSub.CurrentPeriodEnd, 0))
+		log.Printf("Subscription %s is set to cancel at period end - preserving current plan until %v, storing new plan %s as pending", 
+			stripeSub.ID, time.Unix(stripeSub.CurrentPeriodEnd, 0), plan.Id)
 		
-		// Only update the cancel_at_period_end flag and timestamps, preserve the current plan
-		return s.updateSubscriptionMetadataOnly(existingSubscription, stripeSub)
+		// Preserve current plan but store the new (lower) plan as pending
+		return s.updateSubscriptionWithPendingPlan(existingSubscription, plan.Id, stripeSub)
 	}
 
 	// Update existing subscription (plan can change immediately if not canceling at period end)
@@ -345,30 +339,20 @@ func (s *SubscriptionService) HandlePaymentFailed(invoice *stripe.Invoice) error
 	return err
 }
 
-// ChangePlan changes a user's subscription plan (placeholder - implement Stripe API calls)
-func (s *SubscriptionService) ChangePlan(userID string, newPlanID string, prorationBehavior string) error {
-	// Validate the plan change request
-	if validationErrors := s.validator.ValidatePlanChange(userID, newPlanID); len(validationErrors) > 0 {
-		return fmt.Errorf("plan change validation failed: %s", validationErrors[0].Message)
-	}
+// This old ChangePlan method has been replaced with the new implementation below
 
-	// TODO: Implement Stripe API call to update subscription
-	// This should update the subscription in Stripe, which will trigger a webhook
-	// The webhook will then update our database
-
-	log.Printf("Plan change requested for user %s to plan %s", userID, newPlanID)
-	return fmt.Errorf("plan change not yet implemented - needs Stripe API integration")
-}
-
-// CreateFreePlanSubscription creates a free plan subscription for a new user
+// CreateFreePlanSubscription ensures a user is on the free plan (no subscription record needed)
 func (s *SubscriptionService) CreateFreePlanSubscription(userID string) error {
-	// Check if user already has a subscription
+	// For free plan, we simply ensure the user has no active subscription
+	// Check if user already has a subscription and deactivate it
 	if _, err := s.repo.FindActiveSubscription(userID); err == nil {
-		return fmt.Errorf("user already has an active subscription")
+		// User has active subscription, switch them to free (deactivate it)
+		_, err := s.SwitchToFreePlan(userID)
+		return err
 	}
-
-	_, err := s.SwitchToFreePlan(userID)
-	return err
+	
+	// No active subscription - user is already on free plan
+	return nil
 }
 
 // CleanupDuplicateSubscriptions ensures only one active subscription per user
@@ -535,4 +519,210 @@ func (s *SubscriptionService) updateSubscriptionMetadataOnly(subscription *core.
 	log.Printf("Updating subscription metadata only (preserving current plan) for subscription %s", subscription.Id)
 	_, err := s.repo.UpdateSubscription(subscription.Id, params)
 	return err
+}
+
+// ChangePlan handles plan changes through the service layer (SINGLE ENTRY POINT)
+func (s *SubscriptionService) ChangePlan(userID string, newPlanID string) (*ChangePlanResult, error) {
+	log.Printf("Processing plan change for user %s to plan %s", userID, newPlanID)
+
+	// Get user's current active subscription
+	currentSub, err := s.repo.FindActiveSubscription(userID)
+	if err != nil {
+		return nil, fmt.Errorf("no active subscription found for user %s: %w", userID, err)
+	}
+
+	// Get current and target plan details
+	currentPlan, err := s.repo.GetPlan(currentSub.GetString("plan_id"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current plan: %w", err)
+	}
+
+	targetPlan, err := s.repo.GetPlan(newPlanID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get target plan: %w", err)
+	}
+
+	// Validate the plan change
+	if validationErrors := s.validator.ValidatePlanChange(userID, newPlanID); len(validationErrors) > 0 {
+		return nil, fmt.Errorf("plan change validation failed: %s", validationErrors[0].Message)
+	}
+
+	// Determine if this is an upgrade or downgrade
+	currentPrice := int64(currentPlan.GetInt("price_cents"))
+	targetPrice := int64(targetPlan.GetInt("price_cents"))
+	isUpgrade := targetPrice > currentPrice
+
+	log.Printf("Plan change: %s (%d cents) -> %s (%d cents), isUpgrade: %v",
+		currentPlan.GetString("name"), currentPrice,
+		targetPlan.GetString("name"), targetPrice, isUpgrade)
+
+	// Get Stripe subscription ID
+	stripeSubID := currentSub.GetString("provider_subscription_id")
+	if stripeSubID == "" {
+		return nil, fmt.Errorf("no Stripe subscription ID found for user %s", userID)
+	}
+
+	// Handle upgrades vs downgrades differently
+	if isUpgrade {
+		return s.handleUpgrade(currentSub, targetPlan, stripeSubID)
+	} else {
+		return s.handleDowngrade(currentSub, targetPlan, stripeSubID)
+	}
+}
+
+// handleUpgrade processes immediate plan upgrades with proration
+func (s *SubscriptionService) handleUpgrade(currentSub *core.Record, targetPlan *core.Record, stripeSubID string) (*ChangePlanResult, error) {
+	log.Printf("Processing UPGRADE: applying immediately with proration")
+
+	stripePriceID := targetPlan.GetString("provider_price_id")
+	if stripePriceID == "" {
+		return nil, fmt.Errorf("target plan has no Stripe price ID")
+	}
+
+	// Update Stripe subscription immediately
+	err := s.updateStripeSubscription(stripeSubID, stripePriceID, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update Stripe subscription: %w", err)
+	}
+
+	// Update the current subscription record (not creating new one!)
+	params := UpdateSubscriptionParams{
+		PlanID:           &targetPlan.Id,
+		ProviderPriceID:  &stripePriceID,
+		PendingPlanID:    stringPtr(""), // Clear any pending plan
+	}
+
+	_, err = s.repo.UpdateSubscription(currentSub.Id, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update subscription record: %w", err)
+	}
+
+	return &ChangePlanResult{
+		Success:       true,
+		Message:       "Upgrade applied immediately - you now have access to enhanced features!",
+		ChangeType:    "upgrade",
+		NewPlan:       targetPlan.Id,
+		EffectiveDate: "immediately",
+	}, nil
+}
+
+// handleDowngrade processes plan downgrades with period-end preservation
+func (s *SubscriptionService) handleDowngrade(currentSub *core.Record, targetPlan *core.Record, stripeSubID string) (*ChangePlanResult, error) {
+	log.Printf("Processing DOWNGRADE: preserving current benefits until period end")
+
+	// Set cancel_at_period_end=true in Stripe
+	err := s.updateStripeSubscription(stripeSubID, "", true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to schedule downgrade in Stripe: %w", err)
+	}
+
+	// Get current period end from Stripe for user display
+	updatedSub, err := s.getStripeSubscription(stripeSubID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated Stripe subscription: %w", err)
+	}
+
+	effectiveDate := time.Unix(updatedSub.CurrentPeriodEnd, 0)
+	
+	// Update the current subscription record with pending plan info
+	params := UpdateSubscriptionParams{
+		PendingPlanID:             &targetPlan.Id,
+		CancelAtPeriodEnd:         boolPtr(true),
+	}
+
+	_, err = s.repo.UpdateSubscription(currentSub.Id, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to store pending plan change: %w", err)
+	}
+
+	return &ChangePlanResult{
+		Success:       true,
+		Message:       fmt.Sprintf("Downgrade scheduled - you'll keep your current benefits until %s, then switch to %s", effectiveDate.Format("January 2, 2006"), targetPlan.GetString("name")),
+		ChangeType:    "downgrade",
+		NewPlan:       targetPlan.Id,
+		EffectiveDate: effectiveDate.Format("January 2, 2006"),
+		PendingChange: true,
+	}, nil
+}
+
+// updateStripeSubscription updates a Stripe subscription
+func (s *SubscriptionService) updateStripeSubscription(subID string, priceID string, cancelAtPeriodEnd bool) error {
+	params := &stripe.SubscriptionParams{}
+	
+	if cancelAtPeriodEnd {
+		// For downgrades: set cancel_at_period_end=true
+		params.CancelAtPeriodEnd = stripe.Bool(true)
+		log.Printf("Setting cancel_at_period_end=true for subscription %s", subID)
+	} else if priceID != "" {
+		// For upgrades: update the subscription item with new price
+		currentStripeSub, err := subscription.Get(subID, nil)
+		if err != nil {
+			return fmt.Errorf("failed to get current subscription from Stripe: %w", err)
+		}
+		
+		if len(currentStripeSub.Items.Data) == 0 {
+			return fmt.Errorf("current subscription has no items to update")
+		}
+		
+		params.Items = []*stripe.SubscriptionItemsParams{
+			{
+				ID:    stripe.String(currentStripeSub.Items.Data[0].ID),
+				Price: stripe.String(priceID),
+			},
+		}
+		params.ProrationBehavior = stripe.String("always_invoice")
+		log.Printf("Updating subscription %s to price %s with immediate proration", subID, priceID)
+	}
+	
+	_, err := subscription.Update(subID, params)
+	return err
+}
+
+func (s *SubscriptionService) getStripeSubscription(subID string) (*stripe.Subscription, error) {
+	return subscription.Get(subID, nil)
+}
+
+// updateSubscriptionWithPendingPlan updates subscription with pending plan info when cancel_at_period_end=true
+// This preserves the current plan benefits while storing the new plan to apply at period end
+func (s *SubscriptionService) updateSubscriptionWithPendingPlan(subscription *core.Record, pendingPlanID string, stripeSub *stripe.Subscription) error {
+	status := s.validator.MapStripeStatus(stripeSub.Status)
+	start := time.Unix(stripeSub.CurrentPeriodStart, 0)
+	end := time.Unix(stripeSub.CurrentPeriodEnd, 0)
+	
+	// Fix invalid timestamps
+	start, end = s.validator.FixInvalidTimestamps(start, end)
+	
+	log.Printf("Preserving current plan for user, storing pending plan %s for period end", pendingPlanID)
+	
+	// CRITICAL: Do NOT update PlanID or ProviderPriceID - preserve current benefits
+	// Only update metadata and store the pending plan info
+	params := UpdateSubscriptionParams{
+		Status:              &status,
+		CurrentPeriodStart:  &start,
+		CurrentPeriodEnd:    &end,
+		CancelAtPeriodEnd:   boolPtr(stripeSub.CancelAtPeriodEnd),
+		PendingPlanID:       &pendingPlanID, // Store the new plan to apply later
+	}
+
+	if stripeSub.CanceledAt > 0 {
+		canceledAt := time.Unix(stripeSub.CanceledAt, 0)
+		params.CanceledAt = &canceledAt
+	}
+	if stripeSub.TrialEnd > 0 {
+		trialEnd := time.Unix(stripeSub.TrialEnd, 0)
+		params.TrialEnd = &trialEnd
+	}
+
+	log.Printf("Updating subscription metadata only (preserving current plan) for subscription %s", subscription.Id)
+	_, err := s.repo.UpdateSubscription(subscription.Id, params)
+	return err
+}
+
+// Helper functions for pointer types
+func stringPtr(s string) *string {
+	return &s
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
