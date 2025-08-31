@@ -155,13 +155,13 @@ func main() {
 
 
 		// Health check endpoint for Kamal deployment
-		// Note: Commented out to avoid conflicts with PocketBase's built-in health endpoint
-		// se.Router.GET("/api/health", func(e *core.RequestEvent) error {
-		//	return e.JSON(200, map[string]interface{}{
-		//		"status": "ok",
-		//		"timestamp": time.Now().Unix(),
-		//	})
-		// })
+		se.Router.GET("/api/health", func(e *core.RequestEvent) error {
+			return e.JSON(200, map[string]interface{}{
+				"status": "ok",
+				"timestamp": time.Now().Unix(),
+				"version": "1.0.0",
+			})
+		})
 
 		// Subscription management routes (use PocketBase SDK + RLS for GET operations)
 		se.Router.POST("/api/subscription/cancel", func(e *core.RequestEvent) error {

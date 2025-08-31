@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/mail"
+	"os"
 	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
@@ -167,10 +168,15 @@ func SendOTPEmail(app core.App, email, otpCode, purpose string) error {
 
 // SendOTPHandler handles OTP generation and sending
 func SendOTPHandler(e *core.RequestEvent, app core.App) error {
-	// Set CORS headers
-	e.Response.Header().Set("Access-Control-Allow-Origin", "*")
+	// Set CORS headers - restrict to your frontend domain in production
+	origin := os.Getenv("FRONTEND_URL")
+	if origin == "" {
+		origin = "*" // fallback for development
+	}
+	e.Response.Header().Set("Access-Control-Allow-Origin", origin)
 	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	e.Response.Header().Set("Access-Control-Allow-Credentials", "true")
 	
 	// Handle preflight OPTIONS requests
 	if e.Request.Method == "OPTIONS" {
@@ -211,10 +217,15 @@ func SendOTPHandler(e *core.RequestEvent, app core.App) error {
 
 // VerifyOTPHandler handles OTP verification
 func VerifyOTPHandler(e *core.RequestEvent, app core.App) error {
-	// Set CORS headers
-	e.Response.Header().Set("Access-Control-Allow-Origin", "*")
+	// Set CORS headers - restrict to your frontend domain in production
+	origin := os.Getenv("FRONTEND_URL")
+	if origin == "" {
+		origin = "*" // fallback for development
+	}
+	e.Response.Header().Set("Access-Control-Allow-Origin", origin)
 	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	e.Response.Header().Set("Access-Control-Allow-Credentials", "true")
 	
 	// Handle preflight OPTIONS requests
 	if e.Request.Method == "OPTIONS" {
