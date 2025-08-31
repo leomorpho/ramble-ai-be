@@ -61,6 +61,7 @@
 	},
 	"dependencies": {
 		"@inlang/paraglide-js": "^2.0.0",
+		"@sentry/sveltekit": "^10.8.0",
 		"@simplewebauthn/browser": "^13.1.0",
 		"@uppy/core": "^4.3.0",
 		"@uppy/dashboard": "^4.1.0",
