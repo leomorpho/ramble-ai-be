@@ -10,6 +10,7 @@ import (
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/stripe/stripe-go/v79"
 )
 
 // HandleWebhook processes payment provider webhooks and routes them to the subscription service
@@ -60,9 +61,13 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 		
 		// Convert payment.Subscription back to webhook event data format for subscription service
 		eventData := subscription.WebhookEventData{
-			EventType: webhookEvent.Type,
-			// TODO: Fix this conversion when implementing proper webhook parsing
-			// Subscription: convertPaymentSubscriptionToStripe(webhookEvent.Data.Subscription),
+			EventType:    webhookEvent.Type,
+			Subscription: convertPaymentSubscriptionToStripe(webhookEvent.Data.Subscription),
+		}
+		
+		// Add customer data if available
+		if webhookEvent.Data.Customer != nil {
+			eventData.Customer = convertPaymentCustomerToStripe(webhookEvent.Data.Customer)
 		}
 		
 		if err := subscriptionService.ProcessWebhookEvent(eventData); err != nil {
@@ -79,8 +84,7 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 		// Handle invoice events
 		eventData := subscription.WebhookEventData{
 			EventType: webhookEvent.Type,
-			// TODO: Fix this conversion when implementing proper webhook parsing
-			// Invoice: convertPaymentInvoiceToStripe(webhookEvent.Data.Invoice),
+			Invoice:   convertPaymentInvoiceToStripe(webhookEvent.Data.Invoice),
 		}
 		
 		if err := subscriptionService.ProcessWebhookEvent(eventData); err != nil {
@@ -89,9 +93,20 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 		}
 
 	case "checkout.session.completed":
-		// Log but don't process - wait for payment confirmation via subscription events
+		// Process checkout session completion - this often triggers subscription creation
 		if webhookEvent.Data.CheckoutSession != nil {
 			log.Printf("Checkout session completed: %s", webhookEvent.Data.CheckoutSession.ID)
+			
+			// Send checkout session data to subscription service for processing
+			eventData := subscription.WebhookEventData{
+				EventType:       webhookEvent.Type,
+				CheckoutSession: convertPaymentCheckoutSessionToStripe(webhookEvent.Data.CheckoutSession),
+			}
+			
+			if err := subscriptionService.ProcessWebhookEvent(eventData); err != nil {
+				log.Printf("Error processing checkout session webhook: %v", err)
+				// Don't return error to Stripe - we've received the event
+			}
 		} else {
 			log.Printf("Checkout session completed but no session data provided")
 		}
@@ -105,41 +120,104 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 
 // Helper function to convert payment.Subscription to stripe.Subscription format expected by subscription service
 // This is a temporary bridge until we refactor the subscription service to use payment types
-func convertPaymentSubscriptionToStripe(sub *Subscription) interface{} {
-	// This would need to return a stripe.Subscription-like object
-	// For now, we'll need to create a simple adapter
-	return map[string]interface{}{
-		"id":                   sub.ID,
-		"customer":             map[string]interface{}{"id": sub.CustomerID},
-		"status":               string(sub.Status),
-		"current_period_start": sub.CurrentPeriodStart.Unix(),
-		"current_period_end":   sub.CurrentPeriodEnd.Unix(),
-		"cancel_at_period_end": sub.CancelAtPeriodEnd,
-		"canceled_at":          getUnixTime(sub.CanceledAt),
-		"trial_end":            getUnixTime(sub.TrialEnd),
-		"items": map[string]interface{}{
-			"data": []map[string]interface{}{
+func convertPaymentSubscriptionToStripe(sub *Subscription) *stripe.Subscription {
+	stripeSub := &stripe.Subscription{
+		ID:                 sub.ID,
+		Customer:           &stripe.Customer{ID: sub.CustomerID},
+		Status:             convertToStripeStatus(sub.Status),
+		CurrentPeriodStart: sub.CurrentPeriodStart.Unix(),
+		CurrentPeriodEnd:   sub.CurrentPeriodEnd.Unix(),
+		CancelAtPeriodEnd:  sub.CancelAtPeriodEnd,
+		Metadata:           sub.Metadata,
+	}
+
+	// Handle optional fields
+	if sub.CanceledAt != nil {
+		stripeSub.CanceledAt = sub.CanceledAt.Unix()
+	}
+	
+	if sub.TrialEnd != nil {
+		stripeSub.TrialEnd = sub.TrialEnd.Unix()
+	}
+
+	// Create subscription items with price
+	if sub.PriceID != "" {
+		stripeSub.Items = &stripe.SubscriptionItemList{
+			Data: []*stripe.SubscriptionItem{
 				{
-					"price": map[string]interface{}{"id": sub.PriceID},
+					Price: &stripe.Price{ID: sub.PriceID},
 				},
 			},
-		},
-		"metadata": sub.Metadata,
+		}
 	}
+
+	return stripeSub
 }
 
 // Helper function to convert payment.Invoice to stripe.Invoice format
-func convertPaymentInvoiceToStripe(invoice *Invoice) interface{} {
-	return map[string]interface{}{
-		"id":       invoice.ID,
-		"customer": map[string]interface{}{"id": invoice.CustomerID},
-		"subscription": map[string]interface{}{
-			"id": getStringValue(invoice.SubscriptionID),
-		},
-		"status":   invoice.Status,
-		"total":    invoice.Total,
-		"currency": invoice.Currency,
-		"metadata": invoice.Metadata,
+func convertPaymentInvoiceToStripe(invoice *Invoice) *stripe.Invoice {
+	stripeInvoice := &stripe.Invoice{
+		ID:       invoice.ID,
+		Customer: &stripe.Customer{ID: invoice.CustomerID},
+		Status:   stripe.InvoiceStatus(invoice.Status),
+		Total:    invoice.Total,
+		Currency: stripe.Currency(invoice.Currency),
+		Metadata: invoice.Metadata,
+	}
+
+	if invoice.SubscriptionID != nil {
+		stripeInvoice.Subscription = &stripe.Subscription{ID: *invoice.SubscriptionID}
+	}
+
+	if invoice.PaidAt != nil {
+		stripeInvoice.StatusTransitions = &stripe.InvoiceStatusTransitions{
+			PaidAt: invoice.PaidAt.Unix(),
+		}
+	}
+
+	return stripeInvoice
+}
+
+// Helper function to convert payment.SubscriptionStatus to stripe.SubscriptionStatus
+func convertToStripeStatus(status SubscriptionStatus) stripe.SubscriptionStatus {
+	switch status {
+	case SubscriptionStatusActive:
+		return stripe.SubscriptionStatusActive
+	case SubscriptionStatusCanceled:
+		return stripe.SubscriptionStatusCanceled
+	case SubscriptionStatusIncomplete:
+		return stripe.SubscriptionStatusIncomplete
+	case SubscriptionStatusIncompleteExpired:
+		return stripe.SubscriptionStatusIncompleteExpired
+	case SubscriptionStatusPastDue:
+		return stripe.SubscriptionStatusPastDue
+	case SubscriptionStatusTrialing:
+		return stripe.SubscriptionStatusTrialing
+	case SubscriptionStatusUnpaid:
+		return stripe.SubscriptionStatusUnpaid
+	default:
+		return stripe.SubscriptionStatusActive
+	}
+}
+
+// Helper function to convert payment.Customer to stripe.Customer format
+func convertPaymentCustomerToStripe(customer *Customer) *stripe.Customer {
+	return &stripe.Customer{
+		ID:       customer.ID,
+		Email:    customer.Email,
+		Name:     customer.Name,
+		Metadata: customer.Metadata,
+	}
+}
+
+// Helper function to convert payment.CheckoutSession to stripe.CheckoutSession format
+func convertPaymentCheckoutSessionToStripe(session *CheckoutSession) *stripe.CheckoutSession {
+	return &stripe.CheckoutSession{
+		ID:       session.ID,
+		URL:      session.URL,
+		Customer: &stripe.Customer{ID: session.CustomerID},
+		Status:   stripe.CheckoutSessionStatus(session.Status),
+		Metadata: session.Metadata,
 	}
 }
 
