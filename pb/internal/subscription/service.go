@@ -137,20 +137,40 @@ func (s *SubscriptionService) CancelSubscription(userID string) error {
 
 // SwitchToFreePlan moves a user to the free plan
 func (s *SubscriptionService) SwitchToFreePlan(userID string) (*core.Record, error) {
-	// For free plan, we simply deactivate all existing subscriptions
-	// No subscription record = user is on free plan
-	
-	// Deactivate any existing active subscriptions
+	// Deactivate any existing active subscriptions first
 	if err := s.repo.DeactivateAllUserSubscriptions(userID); err != nil {
 		log.Printf("Warning: Failed to deactivate existing subscriptions: %v", err)
 		// Continue anyway - important to not have active subscriptions
 	}
 
-	log.Printf("User %s switched to free plan (no subscription record)", userID)
-	
-	// Return nil since we don't create subscription records for free users
-	// The calling code should handle this appropriately
-	return nil, nil
+	// Get the free plan
+	freePlan, err := s.repo.GetFreePlan()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get free plan: %w", err)
+	}
+
+	// Create a new subscription record for the free plan
+	now := time.Now()
+	paymentProvider := "stripe"
+	params := CreateSubscriptionParams{
+		UserID:                userID,
+		PlanID:                freePlan.Id,
+		Status:                StatusActive,
+		CurrentPeriodStart:    now,
+		CurrentPeriodEnd:      now.AddDate(1, 0, 0), // Free plan active for 1 year
+		CancelAtPeriodEnd:     false,
+		ProviderSubscriptionID: nil, // No Stripe subscription for free plan
+		ProviderPriceID:       nil, // No Stripe price for free plan
+		PaymentProvider:       &paymentProvider, // Consistent with other plans
+	}
+
+	record, err := s.repo.CreateSubscription(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create free plan subscription: %w", err)
+	}
+
+	log.Printf("User %s switched to free plan", userID)
+	return record, nil
 }
 
 // GetUserSubscriptionInfo retrieves comprehensive subscription information for a user
