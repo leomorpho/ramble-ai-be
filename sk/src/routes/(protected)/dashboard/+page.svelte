@@ -3,7 +3,7 @@
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.js';
 	import { config } from '$lib/config.js';
 	import { pb } from '$lib/pocketbase.js';
-	import { Crown, User, Mail, Calendar, Settings, Edit3, Shield } from 'lucide-svelte';
+	import { Crown, Mail, Calendar, Settings, Edit3, Shield } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -342,10 +342,7 @@
 					<!-- Display Mode -->
 					<div class="space-y-6">
 						<!-- User Info -->
-						<div class="flex items-center gap-4">
-							<div class="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
-								<User class="w-6 h-6 text-muted-foreground" />
-							</div>
+						<div>
 							<div>
 								<h4 class="text-lg font-semibold">
 									{authStore.user?.name || 'User'}
@@ -470,10 +467,7 @@
 				<!-- Free Plan -->
 				{@const freePlan = subscriptionStore.getEffectiveCurrentPlan()}
 				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
-					<div class="flex items-center gap-4">
-						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-							<User class="w-5 h-5 text-muted-foreground" />
-						</div>
+					<div>
 						<div>
 							<h4 class="text-lg font-semibold">{freePlan?.name}</h4>
 							<p class="text-sm text-muted-foreground">
@@ -493,10 +487,7 @@
 			{:else}
 				<!-- Fallback: No Plan Found -->
 				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
-					<div class="flex items-center gap-4">
-						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-							<User class="w-5 h-5 text-muted-foreground" />
-						</div>
+					<div>
 						<div>
 							<h4 class="text-lg font-semibold">No Active Plan</h4>
 							<p class="text-sm text-muted-foreground">Choose a plan to get started</p>
