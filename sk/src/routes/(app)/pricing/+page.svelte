@@ -195,7 +195,7 @@
 	function getMonthlyAndFreePlans() {
 		return subscriptionStore.plans
 			.filter(plan => plan.billing_interval === 'month' || plan.billing_interval === 'free')
-			.sort((a, b) => a.display_order - b.display_order);
+			.sort((a, b) => a.price_cents - b.price_cents); // Sort by price: cheapest to most expensive
 	}
 
 	// Removed yearly-specific functions

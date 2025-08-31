@@ -13,7 +13,6 @@ interface SubscriptionPlan {
 	provider_product_id?: string;
 	payment_provider: 'stripe' | 'paddle' | 'polar';
 	is_active: boolean;
-	display_order: number;
 	features: string[];
 }
 
@@ -160,10 +159,10 @@ class SubscriptionStore {
 		this.#isLoading = true;
 
 		try {
-			// Use PocketBase SDK to fetch subscription plans
+			// Use PocketBase SDK to fetch subscription plans ordered by price (cheapest to most expensive)
 			const plans = await pb.collection('subscription_plans').getFullList<SubscriptionPlan>({
 				filter: 'is_active = true',
-				sort: '+display_order'
+				sort: '+price_cents'
 			});
 			
 			this.#plans = plans;
@@ -330,7 +329,7 @@ class SubscriptionStore {
 			
 			const upgrades = await pb.collection('subscription_plans').getFullList<SubscriptionPlan>({
 				filter: `is_active = true && hours_per_month > ${currentHours}`,
-				sort: '+display_order'
+				sort: '+price_cents'
 			});
 
 			return upgrades;

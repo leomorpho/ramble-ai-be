@@ -20,7 +20,6 @@ type PlanConfig struct {
 	ProviderProductID string
 	PaymentProvider   string
 	Features          []string
-	DisplayOrder      int
 	IsActive          bool
 }
 
@@ -76,7 +75,6 @@ func SeedSubscriptionPlans(app core.App) error {
 			ProviderProductID: "",
 			PaymentProvider:   "stripe",
 			Features:          []string{"30 minutes per month", "Basic support"},
-			DisplayOrder:      1,
 			IsActive:          true,
 		},
 		{
@@ -88,7 +86,6 @@ func SeedSubscriptionPlans(app core.App) error {
 			ProviderProductID: basicProductID,
 			PaymentProvider:   "stripe",
 			Features:          []string{"10 hours per month", "Email support", "Priority processing"},
-			DisplayOrder:      2,
 			IsActive:          true,
 		},
 		{
@@ -100,7 +97,6 @@ func SeedSubscriptionPlans(app core.App) error {
 			ProviderProductID: proProductID,
 			PaymentProvider:   "stripe",
 			Features:          []string{"25 hours per month", "Priority support", "Fastest processing", "All features"},
-			DisplayOrder:      3,
 			IsActive:          true,
 		},
 	}
@@ -127,7 +123,6 @@ func SeedSubscriptionPlans(app core.App) error {
 		record.Set("provider_product_id", planConfig.ProviderProductID)
 		record.Set("payment_provider", planConfig.PaymentProvider)
 		record.Set("features", planConfig.Features)
-		record.Set("display_order", planConfig.DisplayOrder)
 		record.Set("is_active", planConfig.IsActive)
 
 		// Save the plan
