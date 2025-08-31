@@ -54,9 +54,11 @@
 		}, 1000);
 	}
 
-	// Send OTP on component mount
+	// Send OTP on component mount and start timer regardless
 	$effect(() => {
 		sendOTP();
+		// Start timer even if send fails - user should still be able to try again
+		startTimer();
 	});
 
 	// Cleanup timer on component unmount
@@ -89,13 +91,13 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.message || 'Failed to send OTP');
+				const errorData = await response.json().catch(() => ({}));
+				throw new Error(errorData.message || `Server error: ${response.status} ${response.statusText}`);
 			}
 
 			success = `Verification code sent to ${email}`;
-			startTimer();
 		} catch (err: any) {
+			console.error('OTP send error:', err);
 			error = err.message || 'Failed to send OTP';
 		} finally {
 			isSendingOTP = false;

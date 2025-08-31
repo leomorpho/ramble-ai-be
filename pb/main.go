@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -60,9 +61,9 @@ func main() {
 	// Register WebAuthn
 	webauthn.Register(app)
 
-	// Configure SMTP settings on app initialization
+	// Configure email settings on app initialization
 	if err := configureEmailSettings(app); err != nil {
-		log.Printf("Failed to configure SMTP: %v", err)
+		log.Printf("[EMAIL] Failed to configure email settings: %v", err)
 	}
 
 	// Configure app settings for large file uploads
@@ -111,6 +112,11 @@ func main() {
 			if err := aihandlers.SeedDevelopmentData(app); err != nil {
 				log.Printf("Warning: Failed to seed development data: %v", err)
 			}
+		}
+		
+		// Validate email configuration
+		if err := validateEmailConfiguration(app); err != nil {
+			log.Printf("[EMAIL] Email configuration validation failed: %v", err)
 		}
 		
 		// Run all seeding functions through centralized seeder
@@ -356,7 +362,7 @@ func configureEmailSettings(app *pocketbase.PocketBase) error {
 		// Development: Use SMTP with Mailpit
 		return configureEmailSMTP(app)
 	} else {
-		// Production: Use Resend
+		// Production: Use Resend HTTP API (disable SMTP)
 		return configureEmailResend(app)
 	}
 }
@@ -389,25 +395,73 @@ func configureEmailSMTP(app *pocketbase.PocketBase) error {
 	return nil
 }
 
-// configureEmailResend sets up Resend configuration for production
+// configureEmailResend sets up Resend configuration for production using HTTP API
 func configureEmailResend(app *pocketbase.PocketBase) error {
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	if resendAPIKey == "" {
-		log.Println("RESEND_API_KEY not set, email verification disabled")
+		log.Println("[EMAIL] RESEND_API_KEY not set, email verification disabled")
 		return nil
 	}
 
-	// Configure Resend SMTP settings
-	// Resend provides SMTP endpoint: smtp.resend.com:587
-	app.Settings().SMTP.Enabled = true
-	app.Settings().SMTP.Host = "smtp.resend.com"
-	app.Settings().SMTP.Port = 587
-	app.Settings().SMTP.Username = "resend"
-	app.Settings().SMTP.Password = resendAPIKey // Resend uses API key as password
-	app.Settings().SMTP.TLS = true
-	app.Settings().SMTP.AuthMethod = "PLAIN"
+	// Log API key status (first 8 chars for debugging)
+	if len(resendAPIKey) >= 8 {
+		log.Printf("[EMAIL] RESEND_API_KEY configured (starts with: %s...)", resendAPIKey[:8])
+	} else {
+		log.Printf("[EMAIL] WARNING: RESEND_API_KEY appears to be too short (%d chars)", len(resendAPIKey))
+	}
+
+	// Disable SMTP for production - we'll use Resend HTTP API directly
+	app.Settings().SMTP.Enabled = false
 	
-	log.Printf("Resend configured for production via SMTP: smtp.resend.com:587")
+	log.Printf("[EMAIL] Resend configured for production using HTTP API (SMTP disabled)")
+	log.Printf("[EMAIL] Email sender configured - From: %s <%s>", 
+		app.Settings().Meta.SenderName, app.Settings().Meta.SenderAddress)
+	
+	return nil
+}
+
+// validateEmailConfiguration validates that email service is properly configured
+func validateEmailConfiguration(app *pocketbase.PocketBase) error {
+	isDevelopment := os.Getenv("DEVELOPMENT") == "true"
+	
+	log.Printf("[EMAIL] Validating email configuration (Development: %v)", isDevelopment)
+	
+	// Check basic settings
+	if app.Settings().Meta.SenderAddress == "" {
+		log.Printf("[EMAIL] WARNING: No sender address configured")
+		return fmt.Errorf("sender address not configured")
+	}
+	
+	if app.Settings().Meta.SenderName == "" {
+		log.Printf("[EMAIL] WARNING: No sender name configured")
+	}
+	
+	log.Printf("[EMAIL] Basic configuration OK - From: %s <%s>", 
+		app.Settings().Meta.SenderName, app.Settings().Meta.SenderAddress)
+	
+	if isDevelopment {
+		// Development: Check SMTP configuration
+		if !app.Settings().SMTP.Enabled {
+			log.Printf("[EMAIL] WARNING: SMTP is disabled in development")
+			return fmt.Errorf("SMTP disabled in development")
+		}
+		log.Printf("[EMAIL] Development SMTP configuration validated")
+	} else {
+		// Production: Check Resend API key
+		resendAPIKey := os.Getenv("RESEND_API_KEY")
+		if resendAPIKey == "" {
+			log.Printf("[EMAIL] ERROR: RESEND_API_KEY not set in production")
+			return fmt.Errorf("RESEND_API_KEY not configured for production")
+		}
+		
+		if len(resendAPIKey) < 10 {
+			log.Printf("[EMAIL] WARNING: RESEND_API_KEY appears invalid (too short)")
+			return fmt.Errorf("RESEND_API_KEY appears invalid")
+		}
+		
+		log.Printf("[EMAIL] Production Resend configuration validated")
+	}
+	
 	return nil
 }
 
