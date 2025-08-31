@@ -30,6 +30,7 @@ interface UserSubscription {
 	cancel_at_period_end: boolean;
 	canceled_at?: string;
 	trial_end?: string;
+	pending_plan_id?: string;
 }
 
 interface UsageInfo {
@@ -346,6 +347,40 @@ class SubscriptionStore {
 	// Check if a plan is the user's current plan
 	isCurrentPlan(planId: string): boolean {
 		return this.#currentPlan?.id === planId;
+	}
+
+	// Get pending plan details
+	getPendingPlan(): SubscriptionPlan | null {
+		if (!this.#userSubscription?.pending_plan_id) {
+			return null;
+		}
+		return this.getPlan(this.#userSubscription.pending_plan_id) || null;
+	}
+
+	// Check if a plan is the user's pending/upcoming plan
+	isPendingPlan(planId: string): boolean {
+		return this.#userSubscription?.pending_plan_id === planId;
+	}
+
+	// Get the upcoming plan (pending plan or free plan if cancelling without pending)
+	getUpcomingPlan(): SubscriptionPlan | null {
+		// If there's a pending plan ID, return that plan
+		if (this.#userSubscription?.pending_plan_id) {
+			return this.getPlan(this.#userSubscription.pending_plan_id) || null;
+		}
+		
+		// If subscription is set to cancel at period end but no pending plan, assume free plan
+		if (this.#userSubscription?.cancel_at_period_end) {
+			return this.#plans.find(plan => plan.billing_interval === 'free') || null;
+		}
+		
+		return null;
+	}
+
+	// Check if a plan is the upcoming plan (includes both pending and default free for cancellations)
+	isUpcomingPlan(planId: string): boolean {
+		const upcomingPlan = this.getUpcomingPlan();
+		return upcomingPlan?.id === planId;
 	}
 
 	// Check if user has access to features

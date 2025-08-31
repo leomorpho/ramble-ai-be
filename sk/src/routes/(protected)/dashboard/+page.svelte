@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/authClient.svelte.js';
+	import { subscriptionStore } from '$lib/stores/subscription.svelte.js';
 	import { config } from '$lib/config.js';
 	import { pb } from '$lib/pocketbase.js';
 	import { Crown, User, Mail, Calendar, Settings, Edit3, Shield } from 'lucide-svelte';
@@ -100,6 +101,9 @@
 			isLoadingSubscription = false;
 		}
 	}
+
+	// Initialize subscription store
+	subscriptionStore.initialize();
 
 	// Watch for user changes
 	$effect(() => {
@@ -440,6 +444,16 @@
 											style="width: {Math.min(usageData.usage_percentage, 100)}%"
 										></div>
 									</div>
+								</div>
+							{/if}
+							
+							<!-- Upcoming Plan Info -->
+							{#if subscriptionStore.getUpcomingPlan() && subscriptionStore.currentPeriodEnd}
+								{@const upcomingPlan = subscriptionStore.getUpcomingPlan()}
+								<div class="mt-3 pt-3 border-t border-muted">
+									<p class="text-sm text-muted-foreground">
+										Changes to <span class="text-foreground font-medium">{upcomingPlan?.name}</span> on {new Date(subscriptionStore.currentPeriodEnd).toLocaleDateString()}
+									</p>
 								</div>
 							{/if}
 						</div>

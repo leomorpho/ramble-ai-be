@@ -95,6 +95,7 @@
 	function getButtonText(planId: string): string {
 		if (checkoutLoading === planId) return 'Processing...';
 		if (isCurrentPlan(planId)) return 'Current Plan';
+		if (subscriptionStore.isUpcomingPlan(planId)) return 'Upcoming Plan';
 		
 		const plan = subscriptionStore.getPlan(planId);
 		if (plan?.billing_interval === 'free') {
@@ -107,7 +108,7 @@
 	}
 
 	function isButtonDisabled(planId: string): boolean {
-		return checkoutLoading !== null || isCurrentPlan(planId);
+		return checkoutLoading !== null || isCurrentPlan(planId) || subscriptionStore.isUpcomingPlan(planId);
 	}
 
 	function getPlanIcon(planName: string) {
@@ -186,8 +187,9 @@
 				{#each getMonthlyAndFreePlans() as plan (plan.id)}
 					{@const isPopular = plan.name.toLowerCase().includes('basic')}
 					{@const isCurrentPlan = subscriptionStore.isCurrentPlan(plan.id)}
+					{@const isUpcomingPlan = subscriptionStore.isUpcomingPlan(plan.id)}
 					
-					<div class="relative border rounded-lg p-6 {isCurrentPlan ? 'bg-green-50 dark:bg-green-900/30' : ''}">
+					<div class="relative border rounded-lg p-6 {isCurrentPlan ? 'bg-green-50 dark:bg-green-900/30' : isUpcomingPlan ? 'bg-blue-50 dark:bg-blue-900/30' : ''}">
 						{#if isCurrentPlan && subscriptionStore.cancelAtPeriodEnd}
 							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
 								<Badge class="bg-blue-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
@@ -200,12 +202,18 @@
 									✓ Current Plan
 								</Badge>
 							</div>
+						{:else if isUpcomingPlan}
+							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+								<Badge class="bg-orange-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
+									⏳ Upcoming Plan
+								</Badge>
+							</div>
 						{:else if isPopular}
 							<Badge class="mb-4">Most Popular</Badge>
 						{/if}
 						
-						<div class="text-center mb-6 {isCurrentPlan ? 'mt-4' : ''}">
-							<h3 class="text-xl font-semibold mb-2 {isCurrentPlan ? 'text-primary' : ''}">{plan.name}</h3>
+						<div class="text-center mb-6 {isCurrentPlan || isUpcomingPlan ? 'mt-4' : ''}">
+							<h3 class="text-xl font-semibold mb-2 {isCurrentPlan ? 'text-primary' : isUpcomingPlan ? 'text-blue-600 dark:text-blue-400' : ''}">{plan.name}</h3>
 							
 							<div class="mb-4">
 								{#if plan.billing_interval === 'free'}

@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { cn } from '$lib/utils.js';
 	import type { HTMLLabelAttributes } from 'svelte/elements';
+	import type { Snippet } from 'svelte';
 
-	let { class: className, ...restProps }: HTMLLabelAttributes = $props();
+	let { 
+		class: className, 
+		children, 
+		...restProps 
+	}: HTMLLabelAttributes & { children?: Snippet } = $props();
 </script>
 
 <label
@@ -12,5 +17,5 @@
 	)}
 	{...restProps}
 >
-	<slot />
+	{@render children?.()}
 </label>

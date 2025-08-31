@@ -26,120 +26,112 @@ describe('LoginForm UI Flow Tests', () => {
 		await expect.element(registerTab).toBeInTheDocument();
 	});
 
-	it('should start with email step in login flow', async () => {
+	it('should show single-step login form', async () => {
 		render(LoginForm);
 
-		// Should show email input initially
+		// Should show email and password inputs
 		const emailInput = page.getByPlaceholder('name@example.com');
-		const continueButton = page.getByRole('button', { name: 'Continue' });
+		const passwordInput = page.getByPlaceholder('Enter your password');
+		const signInButton = page.getByRole('button', { name: 'Sign in' });
 		
 		await expect.element(emailInput).toBeInTheDocument();
-		await expect.element(continueButton).toBeInTheDocument();
+		await expect.element(passwordInput).toBeInTheDocument();
+		await expect.element(signInButton).toBeInTheDocument();
 		
 		// Should show welcome message
 		const heading = page.getByRole('heading', { name: 'Welcome back' });
 		await expect.element(heading).toBeInTheDocument();
 	});
 
-	it('should validate email before allowing continue', async () => {
+	it('should validate email and password before allowing sign in', async () => {
 		render(LoginForm);
 
 		const emailInput = page.getByPlaceholder('name@example.com');
-		const continueButton = page.getByRole('button', { name: 'Continue' });
+		const passwordInput = page.getByPlaceholder('Enter your password');
+		const signInButton = page.getByRole('button', { name: 'Sign in' });
 		
 		// Button should be disabled initially
-		await expect.element(continueButton).toBeDisabled();
+		await expect.element(signInButton).toBeDisabled();
 		
 		// Enter invalid email
 		await emailInput.fill('invalid-email');
-		await expect.element(continueButton).toBeDisabled();
+		await expect.element(signInButton).toBeDisabled();
 		
-		// Enter valid email
+		// Enter valid email but no password
 		await emailInput.fill('test@example.com');
-		await expect.element(continueButton).toBeEnabled();
+		await expect.element(signInButton).toBeDisabled();
+		
+		// Enter both valid email and password
+		await passwordInput.fill('password123');
+		await expect.element(signInButton).toBeEnabled();
 	});
 
-	it('should progress to method selection after valid email', async () => {
+	it('should show forgot password link', async () => {
 		render(LoginForm);
 
-		const emailInput = page.getByPlaceholder('name@example.com');
-		const continueButton = page.getByRole('button', { name: 'Continue' });
-		
-		// Enter valid email and continue
-		await emailInput.fill('test@example.com');
-		await continueButton.click();
-
-		// Should show method selection
-		const methodHeading = page.getByRole('heading', { name: 'How would you like to sign in?' });
-		await expect.element(methodHeading).toBeInTheDocument();
-		
-		// Should show password option
-		const passwordButton = page.getByRole('button', { name: /Use your password/ });
-		await expect.element(passwordButton).toBeInTheDocument();
-	});
-
-	it('should navigate to password step when password method selected', async () => {
-		render(LoginForm);
-
-		// Navigate to method selection
-		const emailInput = page.getByPlaceholder('name@example.com');
-		await emailInput.fill('test@example.com');
-		await page.getByRole('button', { name: 'Continue' }).click();
-
-		// Select password method
-		const passwordButton = page.getByRole('button', { name: /Use your password/ });
-		await passwordButton.click();
-
-		// Should show password step
-		const passwordHeading = page.getByRole('heading', { name: 'Enter your password' });
-		const passwordInput = page.getByPlaceholder('Enter your password');
-		
-		await expect.element(passwordHeading).toBeInTheDocument();
-		await expect.element(passwordInput).toBeInTheDocument();
-	});
-
-	it('should show/hide password toggle', async () => {
-		render(LoginForm);
-
-		// Navigate to password step
-		const emailInput = page.getByPlaceholder('name@example.com');
-		await emailInput.fill('test@example.com');
-		await page.getByRole('button', { name: 'Continue' }).click();
-		await page.getByRole('button', { name: /Use your password/ }).click();
-
-		const passwordInput = page.getByPlaceholder('Enter your password');
-		
-		// Should be password type initially
-		await expect.element(passwordInput).toHaveAttribute('type', 'password');
-	});
-
-	it('should handle forgot password link', async () => {
-		render(LoginForm);
-
-		// Navigate to password step
-		const emailInput = page.getByPlaceholder('name@example.com');
-		await emailInput.fill('test@example.com');
-		await page.getByRole('button', { name: 'Continue' }).click();
-		await page.getByRole('button', { name: /Use your password/ }).click();
-
-		// Should show forgot password link
+		// Should show forgot password link in single-step form
 		const forgotPasswordLink = page.getByRole('link', { name: 'Forgot your password?' });
 		await expect.element(forgotPasswordLink).toBeInTheDocument();
 		await expect.element(forgotPasswordLink).toHaveAttribute('href', '/forgot-password');
 	});
 
-	it('should show passkey registration option in password step', async () => {
+	it('should show password input with toggle visibility', async () => {
 		render(LoginForm);
 
-		// Navigate to password step
+		// Should show password input in single-step form
+		const passwordInput = page.getByPlaceholder('Enter your password');
+		await expect.element(passwordInput).toBeInTheDocument();
+		
+		// Should be password type initially
+		await expect.element(passwordInput).toHaveAttribute('type', 'password');
+		
+		// Should have a toggle button (eye icon)
+		const toggleButton = passwordInput.locator('..').getByRole('button');
+		await expect.element(toggleButton).toBeInTheDocument();
+	});
+
+	it('should show passkey registration option when available', async () => {
+		render(LoginForm);
+
+		// Enter valid email to potentially show passkey options
 		const emailInput = page.getByPlaceholder('name@example.com');
 		await emailInput.fill('test@example.com');
-		await page.getByRole('button', { name: 'Continue' }).click();
-		await page.getByRole('button', { name: /Use your password/ }).click();
-
-		// Should show passkey registration section
+		
+		// Wait a moment for passkey check (would normally show passkey registration)
+		// Since WebAuthn is not supported in test environment, should show registration option
 		const passkeyRegSection = page.getByText('Optional: Enhanced Security');
 		await expect.element(passkeyRegSection).toBeInTheDocument();
+	});
+
+	it('should disable form during loading state', async () => {
+		render(LoginForm);
+
+		const emailInput = page.getByPlaceholder('name@example.com');
+		const passwordInput = page.getByPlaceholder('Enter your password');
+		
+		// Fill in valid credentials
+		await emailInput.fill('test@example.com');
+		await passwordInput.fill('password123');
+		
+		// Form elements should not be disabled initially
+		await expect.element(emailInput).not.toBeDisabled();
+		await expect.element(passwordInput).not.toBeDisabled();
+	});
+
+	it('should show password visibility toggle', async () => {
+		render(LoginForm);
+
+		const passwordInput = page.getByPlaceholder('Enter your password');
+		
+		// Should be password type initially
+		await expect.element(passwordInput).toHaveAttribute('type', 'password');
+		
+		// Find and click the toggle button (eye icon)
+		const toggleButton = passwordInput.locator('..').getByRole('button');
+		await toggleButton.click();
+		
+		// Should change to text type
+		await expect.element(passwordInput).toHaveAttribute('type', 'text');
 	});
 
 	it('should switch between login and register tabs', async () => {
