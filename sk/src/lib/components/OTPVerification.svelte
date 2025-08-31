@@ -24,6 +24,7 @@
 	let timeLeft = $state(600); // 10 minutes in seconds
 	let canResend = $state(false);
 	let timer = $state<NodeJS.Timeout | null>(null);
+	let hasAttemptedSend = $state(false); // Prevent automatic retry loops
 
 	// Format time remaining
 	let timeFormatted = $derived.by(() => {
@@ -54,11 +55,14 @@
 		}, 1000);
 	}
 
-	// Send OTP on component mount and start timer regardless
+	// Send OTP on component mount (only once)
 	$effect(() => {
-		sendOTP();
-		// Start timer even if send fails - user should still be able to try again
-		startTimer();
+		if (!hasAttemptedSend) {
+			hasAttemptedSend = true;
+			sendOTP();
+			// Start timer even if send fails - user should still be able to try again
+			startTimer();
+		}
 	});
 
 	// Cleanup timer on component unmount
@@ -73,11 +77,18 @@
 
 	// Send OTP code
 	async function sendOTP() {
+		// Prevent multiple simultaneous requests
+		if (isSendingOTP) {
+			console.log('OTP send already in progress, skipping...');
+			return;
+		}
+
 		isSendingOTP = true;
 		error = null;
 		success = null;
 
 		try {
+			console.log(`[OTP] Attempting to send OTP to ${email} for ${purpose}`);
 			const response = await fetch(`${pb.baseUrl}/send-otp`, {
 				method: 'POST',
 				headers: {
@@ -96,8 +107,9 @@
 			}
 
 			success = `Verification code sent to ${email}`;
+			console.log(`[OTP] Successfully sent OTP to ${email}`);
 		} catch (err: any) {
-			console.error('OTP send error:', err);
+			console.error('[OTP] Send error:', err);
 			error = err.message || 'Failed to send OTP';
 		} finally {
 			isSendingOTP = false;
