@@ -114,9 +114,8 @@ The application uses a provider-agnostic payment system. Currently, Stripe is th
 
 #### Stripe Configuration
 
-**Webhook Endpoints:**
-- Primary: `{HOST}/api/webhooks/stripe`
-- Legacy: `{HOST}/stripe` (maintained for backward compatibility)
+**Webhook Endpoint:**
+- `{HOST}/api/webhooks/stripe`
 
 **Required Webhook Events:**
 - `customer.subscription.created`

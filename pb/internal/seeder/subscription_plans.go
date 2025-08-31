@@ -3,6 +3,9 @@ package seeder
 import (
 	"fmt"
 	"log"
+	"os"
+
+	"pocketbase/internal/payment"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -32,7 +35,37 @@ func SeedSubscriptionPlans(app core.App) error {
 		return nil
 	}
 
-	// Define default subscription plans
+	// Create Stripe products and prices if we have a Stripe key
+	var stripeResults map[string]*payment.ProductAndPriceResult
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey != "" {
+		log.Println("🔄 Creating Stripe products and prices...")
+		setup := payment.NewStripeSetup(stripeKey)
+		stripeResults, err = setup.SetupDefaultProductsAndPrices()
+		if err != nil {
+			log.Printf("⚠️  Warning: Failed to create Stripe products: %v", err)
+			log.Println("📋 Continuing with placeholder price IDs...")
+		}
+	} else {
+		log.Println("⚠️  No STRIPE_SECRET_KEY found - using placeholder price IDs")
+	}
+
+	// Define default subscription plans with dynamic Stripe IDs
+	var basicPriceID, basicProductID = "price_basic_monthly", "prod_basic"
+	var proPriceID, proProductID = "price_pro_monthly", "prod_pro"
+
+	// Use real Stripe IDs if we created them
+	if stripeResults != nil {
+		if basic, ok := stripeResults["basic"]; ok {
+			basicPriceID = basic.PriceID
+			basicProductID = basic.ProductID
+		}
+		if pro, ok := stripeResults["pro"]; ok {
+			proPriceID = pro.PriceID
+			proProductID = pro.ProductID
+		}
+	}
+
 	plans := []PlanConfig{
 		{
 			Name:              "Free",
@@ -51,8 +84,8 @@ func SeedSubscriptionPlans(app core.App) error {
 			PriceCents:        700, // $7
 			BillingInterval:   "month",
 			HoursPerMonth:     10.0,
-			ProviderPriceID:   "price_basic_monthly", // TODO: Replace with actual Stripe price ID
-			ProviderProductID: "prod_basic",          // TODO: Replace with actual Stripe product ID
+			ProviderPriceID:   basicPriceID,
+			ProviderProductID: basicProductID,
 			PaymentProvider:   "stripe",
 			Features:          []string{"10 hours per month", "Email support", "Priority processing"},
 			DisplayOrder:      2,
@@ -63,8 +96,8 @@ func SeedSubscriptionPlans(app core.App) error {
 			PriceCents:        1500, // $15
 			BillingInterval:   "month",
 			HoursPerMonth:     25.0,
-			ProviderPriceID:   "price_pro_monthly", // TODO: Replace with actual Stripe price ID
-			ProviderProductID: "prod_pro",          // TODO: Replace with actual Stripe product ID
+			ProviderPriceID:   proPriceID,
+			ProviderProductID: proProductID,
 			PaymentProvider:   "stripe",
 			Features:          []string{"25 hours per month", "Priority support", "Fastest processing", "All features"},
 			DisplayOrder:      3,

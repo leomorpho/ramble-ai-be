@@ -27,14 +27,20 @@ export async function createCheckoutSession(planId: string) {
 		throw new Error(error.error || 'Failed to create checkout session');
 	}
 
-	const { url } = await response.json();
+	const data = await response.json();
 	
-	// Redirect to payment checkout
-	if (url) {
-		window.location.href = url;
+	// Check if this is a free plan
+	if (data.is_free) {
+		// For free plans, use the change-plan endpoint instead
+		return changePlan(planId);
 	}
 	
-	return url;
+	// Redirect to payment checkout
+	if (data.url) {
+		window.location.href = data.url;
+	}
+	
+	return data.url;
 }
 
 // Helper to create billing portal link

@@ -43,6 +43,15 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 
 	// Route webhook events to appropriate handlers
 	switch webhookEvent.Type {
+	case "customer.created":
+		// Customer creation is handled automatically by payment service
+		// This webhook is mostly for logging and potential future processing
+		if webhookEvent.Data.Customer != nil {
+			log.Printf("Customer created: %s", webhookEvent.Data.Customer.ID)
+		} else {
+			log.Printf("Customer created but no customer data provided")
+		}
+		
 	case "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted":
 		if webhookEvent.Data.Subscription == nil {
 			log.Printf("No subscription data in webhook")
@@ -81,7 +90,11 @@ func (s *Service) HandleWebhook(e *core.RequestEvent, app *pocketbase.PocketBase
 
 	case "checkout.session.completed":
 		// Log but don't process - wait for payment confirmation via subscription events
-		log.Printf("Checkout session completed: %s", webhookEvent.Data.CheckoutSession.ID)
+		if webhookEvent.Data.CheckoutSession != nil {
+			log.Printf("Checkout session completed: %s", webhookEvent.Data.CheckoutSession.ID)
+		} else {
+			log.Printf("Checkout session completed but no session data provided")
+		}
 
 	default:
 		log.Printf("Unhandled webhook event type: %s", webhookEvent.Type)

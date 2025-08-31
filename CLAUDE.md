@@ -227,16 +227,16 @@ The following PocketBase collections are automatically managed via webhooks:
 
 ### API Endpoints
 
-- `POST /create-checkout-session` - Create Stripe checkout for subscriptions/payments
-- `POST /create-portal-link` - Generate billing portal access for customers
-- `POST /stripe` - Webhook endpoint for Stripe event processing
+- `POST /api/payment/checkout` - Create Stripe checkout for subscriptions/payments
+- `POST /api/payment/portal` - Generate billing portal access for customers
+- `POST /api/webhooks/stripe` - Webhook endpoint for Stripe event processing
 
 ### Setup Instructions
 
 1. **Create Stripe Account**: Set up test mode at https://dashboard.stripe.com
 2. **Get API Keys**: Copy secret key from https://dashboard.stripe.com/test/apikeys
 3. **Configure Webhook**: 
-   - URL: `https://your-domain.com/stripe`
+   - URL: `https://your-domain.com/api/webhooks/stripe`
    - Events: Select all events
    - Copy signing secret
 4. **Update Environment**: Replace placeholder values in `pb/.env`
@@ -246,7 +246,7 @@ The following PocketBase collections are automatically managed via webhooks:
 ### Development Workflow
 
 1. Start PocketBase: `cd pb && go run main.go serve`
-2. Test webhooks: `stripe listen --forward-to=127.0.0.1:8090/stripe`
+2. Test webhooks: `stripe listen --forward-to=127.0.0.1:8090/api/webhooks/stripe`
 3. Create test products in Stripe dashboard
 4. Products/prices automatically sync to PocketBase via webhooks
 
@@ -342,8 +342,8 @@ go test ./... -v                # Run all tests
 
 #### Test Structure
 Tests are located alongside the code they test:
-- `internal/stripe/subscription_test.go` - Subscription management tests
-- `internal/stripe/logic_test.go` - Pure business logic tests
+- `internal/subscription/service_test.go` - Subscription management tests
+- Various test files for business logic validation
 
 #### Writing Tests
 

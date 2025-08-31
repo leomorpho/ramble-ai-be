@@ -39,7 +39,7 @@ stripe: ## Start Stripe webhook forwarding (run in separate terminal)
 		echo "💡 Or run 'make be-pocketbase' to start backend without webhooks"; \
 		exit 1; \
 	fi
-	@stripe listen --forward-to=127.0.0.1:8090/stripe
+	@stripe listen --forward-to=127.0.0.1:8090/api/webhooks/stripe
 
 dev-backend: ## Start PocketBase backend in watch mode
 	@echo "Starting PocketBase backend..."

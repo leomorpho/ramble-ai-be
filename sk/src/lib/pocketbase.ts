@@ -9,7 +9,6 @@ import type {
 import { readable, type Readable, type Subscriber } from "svelte/store";
 import { browser } from "$app/environment";
 import { base } from "$app/paths";
-import { env } from "$env/dynamic/public";
 import { invalidateAll } from "$app/navigation";
 import type { TypedPocketBase } from "./generated-types";
 import {
@@ -22,18 +21,33 @@ import { alerts } from "$lib/components/Alerts.svelte";
 export function getPocketBaseURL() {
   if (!browser) return undefined;
   
+  // Try to get environment variable (with fallback for test environments)
+  let envUrl: string | undefined;
+  try {
+    // Dynamic import to handle test environments where $env might not be available
+    if (typeof window !== 'undefined' && window.location) {
+      // In browser context, try to access environment variable
+      envUrl = import.meta.env?.VITE_POCKETBASE_URL;
+    }
+  } catch {
+    // Fallback for test environments
+    envUrl = undefined;
+  }
+  
   // Use environment variable if set (for production)
-  if (env.VITE_POCKETBASE_URL) {
-    return env.VITE_POCKETBASE_URL;
+  if (envUrl) {
+    return envUrl;
   }
   
   // Fallback for development
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  if (typeof window !== 'undefined' && window.location && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://localhost:8090';
   }
   
   // Last resort fallback (shouldn't happen with proper env config)
-  return window.location.origin + base;
+  return typeof window !== 'undefined' && window.location ? 
+    window.location.origin + base : 'http://localhost:8090';
 }
 
 export const client = new PocketBase(getPocketBaseURL()) as TypedPocketBase;

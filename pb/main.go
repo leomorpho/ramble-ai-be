@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -18,8 +17,10 @@ import (
 	bannerhandlers "pocketbase/internal/banners"
 	otphandlers "pocketbase/internal/otp"
 	"pocketbase/internal/payment"
+	paymenthandlers "pocketbase/internal/payment"
 	"pocketbase/internal/seeder"
 	"pocketbase/internal/subscription"
+	subscriptionhandlers "pocketbase/internal/subscription"
 	"pocketbase/webauthn"
 )
 
@@ -74,46 +75,6 @@ func main() {
 		return be.Next()
 	})
 
-	// Helper functions for endpoint handlers
-	createCheckoutSession := func(e *core.RequestEvent, app *pocketbase.PocketBase, paymentService *payment.Service) error {
-		// TODO: Implement checkout session creation using payment service
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	createPortalLink := func(e *core.RequestEvent, app *pocketbase.PocketBase, paymentService *payment.Service) error {
-		// TODO: Implement portal link creation using payment service  
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	changePlan := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement plan change using subscription service
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	getUserSubscriptionInfo := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement get user subscription info
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	getAvailablePlans := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement get available plans
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	getUsageStats := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement get usage stats
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	getPlanUpgrades := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement get plan upgrades
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
-	
-	switchToFreePlan := func(e *core.RequestEvent, app *pocketbase.PocketBase, subscriptionService subscription.Service) error {
-		// TODO: Implement switch to free plan
-		return e.JSON(http.StatusNotImplemented, map[string]string{"error": "Not implemented yet"})
-	}
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		// Initialize services for route handlers
@@ -167,17 +128,17 @@ func main() {
 		// Payment routes (provider-agnostic)
 		se.Router.POST("/api/payment/checkout", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return createCheckoutSession(e, app, paymentService)
+			return paymenthandlers.CreateCheckoutSessionHandler(e, app, paymentService)
 		})
 
 		se.Router.POST("/api/payment/portal", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return createPortalLink(e, app, paymentService)
+			return paymenthandlers.CreatePortalLinkHandler(e, app, paymentService)
 		})
 
 		se.Router.POST("/api/payment/change-plan", func(e *core.RequestEvent) error {
 			// Default to Stripe for now, but can be extended to support multiple providers
-			return changePlan(e, app, subscriptionService)
+			return subscriptionhandlers.ChangePlanHandler(e, app, subscriptionService)
 		})
 
 		// Payment webhook routes
@@ -186,22 +147,6 @@ func main() {
 			return paymentService.HandleWebhook(e, app)
 		})
 
-		// Legacy Stripe routes (maintain backward compatibility)
-		se.Router.POST("/create-checkout-session", func(e *core.RequestEvent) error {
-			return createCheckoutSession(e, app, paymentService)
-		})
-
-		se.Router.POST("/create-portal-link", func(e *core.RequestEvent) error {
-			return createPortalLink(e, app, paymentService)
-		})
-
-		se.Router.POST("/stripe", func(e *core.RequestEvent) error {
-			return paymentService.HandleWebhook(e, app)
-		})
-		
-		se.Router.POST("/change-plan", func(e *core.RequestEvent) error {
-			return changePlan(e, app, subscriptionService)
-		})
 
 		// Health check endpoint for Kamal deployment
 		// Note: Commented out to avoid conflicts with PocketBase's built-in health endpoint
@@ -212,25 +157,9 @@ func main() {
 		//	})
 		// })
 
-		// Subscription management routes
-		se.Router.GET("/api/subscription/info", func(e *core.RequestEvent) error {
-			return getUserSubscriptionInfo(e, app, subscriptionService)
-		})
-
-		se.Router.GET("/api/subscription/plans", func(e *core.RequestEvent) error {
-			return getAvailablePlans(e, app, subscriptionService)
-		})
-
-		se.Router.GET("/api/subscription/usage", func(e *core.RequestEvent) error {
-			return getUsageStats(e, app, subscriptionService)
-		})
-
-		se.Router.GET("/api/subscription/upgrades", func(e *core.RequestEvent) error {
-			return getPlanUpgrades(e, app, subscriptionService)
-		})
-
+		// Subscription management routes (use PocketBase SDK + RLS for GET operations)
 		se.Router.POST("/api/subscription/switch-to-free", func(e *core.RequestEvent) error {
-			return switchToFreePlan(e, app, subscriptionService)
+			return subscriptionhandlers.SwitchToFreePlanHandler(e, app, subscriptionService)
 		})
 
 		// OTP routes

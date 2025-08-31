@@ -230,8 +230,90 @@ func (p *stripeProviderImpl) ParseWebhookEvent(payload []byte, signature string)
 		Data:         WebhookEventData{},
 	}
 
-	// For now, return basic event - proper parsing would need to be implemented
-	// TODO: Parse event data based on type like in stripe/webhooks.go
+	// Parse event data based on type
+	// Note: event.Data.Object is map[string]interface{}, we need to parse it safely
+	switch event.Type {
+	case "customer.created", "customer.updated":
+		if data := event.Data.Object; data != nil {
+			webhookEvent.Data.Customer = &Customer{
+				ID:       getStringFromMap(data, "id"),
+				Email:    getStringFromMap(data, "email"),
+				Name:     getStringFromMap(data, "name"),
+				Metadata: getStringMapFromMap(data, "metadata"),
+			}
+		}
+
+	case "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted":
+		if data := event.Data.Object; data != nil {
+			webhookEvent.Data.Subscription = &Subscription{
+				ID:                 getStringFromMap(data, "id"),
+				CustomerID:         getStringFromMap(data, "customer"),
+				Status:             SubscriptionStatus(getStringFromMap(data, "status")),
+				CurrentPeriodStart: time.Unix(getInt64FromMap(data, "current_period_start"), 0),
+				CurrentPeriodEnd:   time.Unix(getInt64FromMap(data, "current_period_end"), 0),
+				CancelAtPeriodEnd:  getBoolFromMap(data, "cancel_at_period_end"),
+				Metadata:           getStringMapFromMap(data, "metadata"),
+			}
+			
+			// Handle optional fields
+			if canceledAt := getInt64FromMap(data, "canceled_at"); canceledAt > 0 {
+				t := time.Unix(canceledAt, 0)
+				webhookEvent.Data.Subscription.CanceledAt = &t
+			}
+			
+			if trialEnd := getInt64FromMap(data, "trial_end"); trialEnd > 0 {
+				t := time.Unix(trialEnd, 0)
+				webhookEvent.Data.Subscription.TrialEnd = &t
+			}
+
+			// Get price ID from items
+			if items := getMapFromMap(data, "items"); items != nil {
+				if itemsData, ok := items["data"].([]interface{}); ok && len(itemsData) > 0 {
+					if firstItem, ok := itemsData[0].(map[string]interface{}); ok {
+						if price := getMapFromMap(firstItem, "price"); price != nil {
+							webhookEvent.Data.Subscription.PriceID = getStringFromMap(price, "id")
+						}
+					}
+				}
+			}
+		}
+
+	case "checkout.session.completed":
+		if data := event.Data.Object; data != nil {
+			webhookEvent.Data.CheckoutSession = &CheckoutSession{
+				ID:         getStringFromMap(data, "id"),
+				URL:        getStringFromMap(data, "url"),
+				CustomerID: getStringFromMap(data, "customer"),
+				Status:     getStringFromMap(data, "status"),
+				Metadata:   getStringMapFromMap(data, "metadata"),
+			}
+		}
+
+	case "invoice.payment_succeeded", "invoice.payment_failed":
+		if data := event.Data.Object; data != nil {
+			invoice := &Invoice{
+				ID:         getStringFromMap(data, "id"),
+				CustomerID: getStringFromMap(data, "customer"),
+				Status:     getStringFromMap(data, "status"),
+				Total:      getInt64FromMap(data, "total"),
+				Currency:   getStringFromMap(data, "currency"),
+				Metadata:   getStringMapFromMap(data, "metadata"),
+			}
+			
+			if subscription := getStringFromMap(data, "subscription"); subscription != "" {
+				invoice.SubscriptionID = &subscription
+			}
+			
+			if statusTransitions := getMapFromMap(data, "status_transitions"); statusTransitions != nil {
+				if paidAtTimestamp := getInt64FromMap(statusTransitions, "paid_at"); paidAtTimestamp > 0 {
+					paidAt := time.Unix(paidAtTimestamp, 0)
+					invoice.PaidAt = &paidAt
+				}
+			}
+			
+			webhookEvent.Data.Invoice = invoice
+		}
+	}
 	
 	return webhookEvent, nil
 }
@@ -298,4 +380,61 @@ func (p *stripeProviderImpl) convertSubscriptionStatus(stripeStatus stripe.Subsc
 		log.Printf("Unknown Stripe subscription status: %s, defaulting to active", stripeStatus)
 		return SubscriptionStatusActive
 	}
+}
+
+// Helper functions for safely extracting data from map[string]interface{}
+func getStringFromMap(m map[string]interface{}, key string) string {
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func getInt64FromMap(m map[string]interface{}, key string) int64 {
+	if val, ok := m[key]; ok {
+		switch v := val.(type) {
+		case int64:
+			return v
+		case int:
+			return int64(v)
+		case float64:
+			return int64(v)
+		}
+	}
+	return 0
+}
+
+func getBoolFromMap(m map[string]interface{}, key string) bool {
+	if val, ok := m[key]; ok {
+		if b, ok := val.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
+func getMapFromMap(m map[string]interface{}, key string) map[string]interface{} {
+	if val, ok := m[key]; ok {
+		if mapVal, ok := val.(map[string]interface{}); ok {
+			return mapVal
+		}
+	}
+	return nil
+}
+
+func getStringMapFromMap(m map[string]interface{}, key string) map[string]string {
+	if val, ok := m[key]; ok {
+		if mapVal, ok := val.(map[string]interface{}); ok {
+			result := make(map[string]string)
+			for k, v := range mapVal {
+				if str, ok := v.(string); ok {
+					result[k] = str
+				}
+			}
+			return result
+		}
+	}
+	return nil
 }
