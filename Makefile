@@ -15,6 +15,11 @@ dev: mailpit-up ## Start development environment (backend + frontend, no Stripe)
 	@make -j2 dev-backend dev-frontend
 
 pb: mailpit-up ## Start PocketBase backend + SvelteKit frontend (use NUKE=1 to delete database first)
+	@if [ "$(NUKE)" = "1" ]; then \
+		echo "💥 Nuking PocketBase database..."; \
+		cd pb && rm -rf pb_data; \
+		echo "🗑️  Database deleted!"; \
+	fi
 	@echo "🚀 Starting PocketBase + SvelteKit..."
 	@echo "📧 Mailpit (email testing): http://localhost:8025"
 	@echo "🔧 PocketBase (backend): http://localhost:8090"

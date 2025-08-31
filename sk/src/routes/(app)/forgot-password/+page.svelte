@@ -26,7 +26,7 @@
 		error = null;
 
 		try {
-			await authStore.pb.collection('users').requestPasswordReset(email);
+			await pb.collection('users').requestPasswordReset(email);
 			success = true;
 		} catch (err: any) {
 			error = err?.message || 'Failed to send password reset email';
