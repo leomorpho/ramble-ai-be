@@ -127,17 +127,12 @@ func convertPaymentSubscriptionToStripe(sub *Subscription) *stripe.Subscription 
 		Status:             convertToStripeStatus(sub.Status),
 		CurrentPeriodStart: sub.CurrentPeriodStart.Unix(),
 		CurrentPeriodEnd:   sub.CurrentPeriodEnd.Unix(),
-		CancelAtPeriodEnd:  sub.CancelAtPeriodEnd,
 		Metadata:           sub.Metadata,
 	}
 
 	// Handle optional fields
 	if sub.CanceledAt != nil {
 		stripeSub.CanceledAt = sub.CanceledAt.Unix()
-	}
-	
-	if sub.TrialEnd != nil {
-		stripeSub.TrialEnd = sub.TrialEnd.Unix()
 	}
 
 	// Create subscription items with price

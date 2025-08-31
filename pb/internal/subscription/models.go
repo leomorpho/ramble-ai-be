@@ -44,9 +44,7 @@ type CreateSubscriptionParams struct {
 	Status                   SubscriptionStatus
 	CurrentPeriodStart       time.Time
 	CurrentPeriodEnd         time.Time
-	CancelAtPeriodEnd        bool
 	CanceledAt               *time.Time
-	TrialEnd                 *time.Time
 }
 
 // UpdateSubscriptionParams represents parameters for updating a subscription
@@ -58,12 +56,7 @@ type UpdateSubscriptionParams struct {
 	Status                   *SubscriptionStatus
 	CurrentPeriodStart       *time.Time
 	CurrentPeriodEnd         *time.Time
-	CancelAtPeriodEnd        *bool
 	CanceledAt               *time.Time
-	TrialEnd                 *time.Time
-	PendingPlanID            *string    // For storing scheduled plan changes
-	PendingChangeEffectiveDate *time.Time // When the pending change will take effect
-	PendingChangeReason      *string    // Reason for the pending change (upgrade/downgrade/cancellation)
 }
 
 // SubscriptionQuery represents query parameters for finding subscriptions

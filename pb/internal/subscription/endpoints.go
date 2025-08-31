@@ -7,20 +7,27 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// ChangePlanHandler handles requests to change subscription plans
+// ChangePlanHandler handles requests to change subscription plans with automatic upgrade/downgrade detection
 func ChangePlanHandler(e *core.RequestEvent, app core.App, subscriptionService Service) error {
+	// Get user info from auth (standard PocketBase pattern)
+	user := e.Auth
+	if user == nil {
+		return e.JSON(http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
+	}
+
 	// Parse request body
 	var req struct {
 		PlanID string `json:"plan_id"`
-		UserID string `json:"user_id"`
+		UserID string `json:"user_id"` // Optional - will use authenticated user if not provided
 	}
 	if err := e.BindBody(&req); err != nil {
 		return e.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	// This endpoint should only be used for actual plan changes, not cancellations
-	// For cancellations, clients should use /api/subscription/cancel endpoint
-	
+	// Use authenticated user ID (ignore request user_id for security)
+	userID := user.Id
+
+	// Validate that the target plan exists
 	plan, err := app.FindRecordById("subscription_plans", req.PlanID)
 	if err != nil {
 		return e.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
@@ -34,8 +41,16 @@ func ChangePlanHandler(e *core.RequestEvent, app core.App, subscriptionService S
 		})
 	}
 
-	// For paid plan changes, use checkout flow
-	return e.JSON(http.StatusBadRequest, map[string]string{"error": "Use checkout for paid plan changes"})
+	// Use the subscription service to handle the plan change with automatic upgrade/downgrade detection
+	// This will compare prices and route upgrades vs downgrades appropriately
+	result, err := subscriptionService.ChangePlan(userID, req.PlanID)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to change plan: %v", err),
+		})
+	}
+
+	return e.JSON(http.StatusOK, result)
 }
 
 // Note: GET operations (subscription info, plans, usage stats, plan upgrades) 

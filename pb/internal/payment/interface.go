@@ -17,6 +17,7 @@ type Provider interface {
 	// Customer management
 	CreateCustomer(params CustomerParams) (*Customer, error)
 	GetCustomer(customerID string) (*Customer, error)
+	HasValidPaymentMethod(customerID string) (*PaymentMethodStatus, error)
 	
 	// Webhook handling
 	ParseWebhookEvent(payload []byte, signature string) (*WebhookEvent, error)
@@ -86,9 +87,7 @@ type Subscription struct {
 	Status               SubscriptionStatus
 	CurrentPeriodStart   time.Time
 	CurrentPeriodEnd     time.Time
-	CancelAtPeriodEnd    bool
 	CanceledAt           *time.Time
-	TrialEnd             *time.Time
 	PriceID              string
 	Metadata             map[string]string
 }
@@ -133,6 +132,16 @@ type Invoice struct {
 	Currency       string
 	PaidAt         *time.Time
 	Metadata       map[string]string
+}
+
+// PaymentMethodStatus represents the status of a customer's payment methods
+type PaymentMethodStatus struct {
+	HasValidPaymentMethod bool      `json:"has_valid_payment_method"`
+	PaymentMethods        int       `json:"payment_methods_count"`
+	DefaultPaymentMethod  *string   `json:"default_payment_method,omitempty"`
+	LastUsed              *time.Time `json:"last_used,omitempty"`
+	RequiresUpdate        bool      `json:"requires_update"`
+	CanProcessPayments    bool      `json:"can_process_payments"`
 }
 
 // Config represents payment provider configuration
@@ -180,6 +189,10 @@ func (s *Service) CreateCustomer(params CustomerParams) (*Customer, error) {
 
 func (s *Service) GetCustomer(customerID string) (*Customer, error) {
 	return s.provider.GetCustomer(customerID)
+}
+
+func (s *Service) HasValidPaymentMethod(customerID string) (*PaymentMethodStatus, error) {
+	return s.provider.HasValidPaymentMethod(customerID)
 }
 
 func (s *Service) ParseWebhookEvent(payload []byte, signature string) (*WebhookEvent, error) {

@@ -135,3 +135,40 @@ func CreatePortalLinkHandler(e *core.RequestEvent, app core.App, paymentService 
 
 	return e.JSON(http.StatusOK, map[string]string{"url": portalLink.URL})
 }
+
+// CheckPaymentMethodHandler checks if user has valid payment methods for direct plan changes
+func CheckPaymentMethodHandler(e *core.RequestEvent, app core.App, paymentService *Service) error {
+	if paymentService == nil {
+		return e.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Payment service not available"})
+	}
+
+	// Get user info from auth (standard PocketBase pattern)
+	user := e.Auth
+	if user == nil {
+		return e.JSON(http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
+	}
+
+	// Get customer
+	customers, err := app.FindRecordsByFilter("payment_customers", fmt.Sprintf("user_id = '%s'", user.Id), "", 1, 0)
+	if err != nil || len(customers) == 0 {
+		// User has no customer record = no payment methods
+		return e.JSON(http.StatusOK, &PaymentMethodStatus{
+			HasValidPaymentMethod: false,
+			PaymentMethods:        0,
+			RequiresUpdate:        false,
+			CanProcessPayments:    false,
+		})
+	}
+
+	customerID := customers[0].GetString("provider_customer_id")
+	
+	// Check payment method status
+	status, err := paymentService.HasValidPaymentMethod(customerID)
+	if err != nil {
+		return e.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("Failed to check payment methods: %v", err),
+		})
+	}
+
+	return e.JSON(http.StatusOK, status)
+}

@@ -2217,15 +2217,6 @@
             },
             {
                 "hidden": false,
-                "id": "bool780795615",
-                "name": "cancel_at_period_end",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "bool"
-            },
-            {
-                "hidden": false,
                 "id": "date1494311345",
                 "max": "",
                 "min": "",
@@ -2234,56 +2225,6 @@
                 "required": false,
                 "system": false,
                 "type": "date"
-            },
-            {
-                "hidden": false,
-                "id": "date1218751048",
-                "max": "",
-                "min": "",
-                "name": "trial_end",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "date"
-            },
-            {
-                "cascadeDelete": false,
-                "collectionId": "pbc_2775741768",
-                "hidden": false,
-                "id": "relation_pending_plan",
-                "maxSelect": 1,
-                "minSelect": 0,
-                "name": "pending_plan_id",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "relation"
-            },
-            {
-                "hidden": false,
-                "id": "date_pending_change",
-                "max": "",
-                "min": "",
-                "name": "pending_change_effective_date",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "date"
-            },
-            {
-                "hidden": false,
-                "id": "select_pending_reason",
-                "maxSelect": 1,
-                "name": "pending_change_reason",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "select",
-                "values": [
-                    "upgrade",
-                    "downgrade",
-                    "cancellation"
-                ]
             },
             {
                 "hidden": false,
@@ -2444,30 +2385,10 @@
             },
             {
                 "hidden": false,
-                "id": "bool780795615",
-                "name": "cancel_at_period_end",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "bool"
-            },
-            {
-                "hidden": false,
                 "id": "date1494311345",
                 "max": "",
                 "min": "",
                 "name": "canceled_at",
-                "presentable": false,
-                "required": false,
-                "system": false,
-                "type": "date"
-            },
-            {
-                "hidden": false,
-                "id": "date1218751048",
-                "max": "",
-                "min": "",
-                "name": "trial_end",
                 "presentable": false,
                 "required": false,
                 "system": false,

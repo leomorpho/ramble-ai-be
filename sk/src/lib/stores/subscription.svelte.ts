@@ -125,10 +125,6 @@ class SubscriptionStore {
 		return this.#userSubscription?.status || 'none';
 	}
 
-	get cancelAtPeriodEnd() {
-		return this.#userSubscription?.cancel_at_period_end ?? false;
-	}
-
 	get currentPeriodEnd() {
 		return this.#userSubscription?.current_period_end;
 	}
@@ -362,25 +358,33 @@ class SubscriptionStore {
 		return this.#userSubscription?.pending_plan_id === planId;
 	}
 
-	// Get the upcoming plan (pending plan or free plan if cancelling without pending)
+	// Get the upcoming plan (no longer relevant with immediate changes)
 	getUpcomingPlan(): SubscriptionPlan | null {
-		// If there's a pending plan ID, return that plan
-		if (this.#userSubscription?.pending_plan_id) {
-			return this.getPlan(this.#userSubscription.pending_plan_id) || null;
-		}
-		
-		// If subscription is set to cancel at period end but no pending plan, assume free plan
-		if (this.#userSubscription?.cancel_at_period_end) {
-			return this.#plans.find(plan => plan.billing_interval === 'free') || null;
-		}
-		
+		// With immediate plan changes, there's no concept of an upcoming plan
 		return null;
 	}
 
-	// Check if a plan is the upcoming plan (includes both pending and default free for cancellations)
+	// Check if a plan is the upcoming plan (no longer relevant with immediate changes)
 	isUpcomingPlan(planId: string): boolean {
-		const upcomingPlan = this.getUpcomingPlan();
-		return upcomingPlan?.id === planId;
+		// With immediate plan changes, there's no concept of an upcoming plan
+		return false;
+	}
+
+	// Get the effective current plan (returns free plan if no subscription)
+	getEffectiveCurrentPlan(): SubscriptionPlan | null {
+		// If user has an active subscription, return their current plan
+		if (this.#currentPlan) {
+			return this.#currentPlan;
+		}
+		
+		// If no subscription, return the free plan
+		return this.#plans.find(plan => plan.billing_interval === 'free') || null;
+	}
+
+	// Check if user is effectively on a specific plan (including free plan when no subscription)
+	isEffectivelyOnPlan(planId: string): boolean {
+		const effectivePlan = this.getEffectiveCurrentPlan();
+		return effectivePlan?.id === planId;
 	}
 
 	// Check if user has access to features

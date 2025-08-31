@@ -62,7 +62,6 @@ func (r *PocketBaseRepository) CreateSubscription(params CreateSubscriptionParam
 	record.Set("status", string(params.Status))
 	record.Set("current_period_start", params.CurrentPeriodStart)
 	record.Set("current_period_end", params.CurrentPeriodEnd)
-	record.Set("cancel_at_period_end", params.CancelAtPeriodEnd)
 
 	if params.ProviderSubscriptionID != nil {
 		record.Set("provider_subscription_id", *params.ProviderSubscriptionID)
@@ -75,9 +74,6 @@ func (r *PocketBaseRepository) CreateSubscription(params CreateSubscriptionParam
 	}
 	if params.CanceledAt != nil {
 		record.Set("canceled_at", *params.CanceledAt)
-	}
-	if params.TrialEnd != nil {
-		record.Set("trial_end", *params.TrialEnd)
 	}
 
 	if err := r.app.Save(record); err != nil {
@@ -115,14 +111,8 @@ func (r *PocketBaseRepository) UpdateSubscription(subscriptionID string, params 
 	if params.CurrentPeriodEnd != nil {
 		record.Set("current_period_end", *params.CurrentPeriodEnd)
 	}
-	if params.CancelAtPeriodEnd != nil {
-		record.Set("cancel_at_period_end", *params.CancelAtPeriodEnd)
-	}
 	if params.CanceledAt != nil {
 		record.Set("canceled_at", *params.CanceledAt)
-	}
-	if params.TrialEnd != nil {
-		record.Set("trial_end", *params.TrialEnd)
 	}
 
 	if err := r.app.Save(record); err != nil {
@@ -347,9 +337,7 @@ func (r *PocketBaseRepository) MoveSubscriptionToHistory(subscriptionRecord *cor
 	historyRecord.Set("status", subscriptionRecord.GetString("status"))
 	historyRecord.Set("current_period_start", subscriptionRecord.Get("current_period_start"))
 	historyRecord.Set("current_period_end", subscriptionRecord.Get("current_period_end"))
-	historyRecord.Set("cancel_at_period_end", subscriptionRecord.GetBool("cancel_at_period_end"))
 	historyRecord.Set("canceled_at", subscriptionRecord.Get("canceled_at"))
-	historyRecord.Set("trial_end", subscriptionRecord.Get("trial_end"))
 	
 	// Set history-specific fields
 	historyRecord.Set("replaced_at", time.Now())

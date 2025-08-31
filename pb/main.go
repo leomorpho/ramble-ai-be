@@ -141,6 +141,11 @@ func main() {
 			return subscriptionhandlers.ChangePlanHandler(e, app, subscriptionService)
 		})
 
+		se.Router.GET("/api/payment/check-method", func(e *core.RequestEvent) error {
+			// Check if user has valid payment methods for direct plan changes
+			return paymenthandlers.CheckPaymentMethodHandler(e, app, paymentService)
+		})
+
 		// Payment webhook routes
 		// IMPORTANT: When adding/removing webhook endpoints, update README.md payment provider section
 		se.Router.POST("/api/webhooks/stripe", func(e *core.RequestEvent) error {
@@ -225,13 +230,12 @@ func main() {
 	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
 		log.Printf("New user created: %s, assigning free plan...", e.Record.Id)
 		
-		// Initialize clean subscription service for this hook
-		adapter := subscription.NewPocketBaseAdapter(app)
-		validator := subscription.NewCleanValidator()
-		cleanService := subscription.NewCleanSubscriptionService(adapter, validator)
+		// Initialize subscription service for this hook
+		repo := subscription.NewRepository(app)
+		service := subscription.NewService(repo)
 		
-		// Create free plan subscription for the new user using clean service
-		err := cleanService.CreateFreePlanSubscription(e.Record.Id)
+		// Create free plan subscription for the new user
+		err := service.CreateFreePlanSubscription(e.Record.Id)
 		if err != nil {
 			log.Printf("Warning: Failed to create free plan for user %s: %v", e.Record.Id, err)
 			// Don't fail user registration if subscription creation fails

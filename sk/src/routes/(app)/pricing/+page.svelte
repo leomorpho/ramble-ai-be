@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { subscriptionStore } from '$lib/stores/subscription.svelte.ts';
 	import { authStore } from '$lib/stores/authClient.svelte.ts';
-	import { createCheckoutSession, cancelSubscription } from '$lib/payment.ts';
+	import { createCheckoutSession, cancelSubscription, changePlanDirect, createPortalLink } from '$lib/payment.ts';
 	import { config } from '$lib/config.ts';
 	import { Loader2, Check, Crown, Zap, AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';
@@ -19,6 +19,12 @@
 	let errorMessage = $state('');
 	let showCancelDialog = $state(false);
 	let pendingCancelPlan = $state<string | null>(null);
+	let showPlanChangeDialog = $state(false);
+	let pendingPlanChange = $state<{
+		planId: string;
+		checkoutUrl: string;
+		paymentStatus: any;
+	} | null>(null);
 
 	// Subscription store is initialized in root layout
 	onMount(() => {
@@ -43,10 +49,22 @@
 			return;
 		}
 
-		// For upgrades or new subscriptions, use checkout
+		// For upgrades or new subscriptions, use hybrid approach
 		checkoutLoading = planId;
 		try {
-			await createCheckoutSession(planId);
+			const result = await createCheckoutSession(planId);
+			
+			// Check if hybrid approach is available (user has valid payment methods)
+			if (result && typeof result === 'object' && result.can_use_direct_change) {
+				// Show confirmation dialog for direct plan change
+				pendingPlanChange = {
+					planId: planId,
+					checkoutUrl: result.checkout_url,
+					paymentStatus: result.payment_status
+				};
+				showPlanChangeDialog = true;
+			}
+			// Otherwise, createCheckoutSession will have redirected to Stripe checkout
 		} catch (error) {
 			console.error('Error creating checkout session:', error);
 			errorMessage = 'Failed to start checkout. Please try again.';
@@ -57,7 +75,8 @@
 	}
 
 	function isCurrentPlan(planId: string): boolean {
-		return subscriptionStore.isCurrentPlan(planId);
+		// Use effective current plan logic to include free plan when no subscription
+		return subscriptionStore.isEffectivelyOnPlan(planId);
 	}
 
 	async function handleCancelConfirm() {
@@ -71,10 +90,9 @@
 			showCancelDialog = false;
 			pendingCancelPlan = null;
 			
-			// Show success message with period end information
-			if (result && result.period_end_date) {
-				const periodEndDate = new Date(result.period_end_date).toLocaleDateString();
-				errorMessage = `Subscription cancelled. You'll retain access to premium features until ${periodEndDate}.`;
+			// Show success message for immediate cancellation
+			if (result) {
+				errorMessage = `Subscription cancelled successfully. You've been switched to the Free plan and will receive a prorated refund for unused time.`;
 				showErrorDialog = true; // Reusing error dialog for success message
 			}
 		} catch (error) {
@@ -92,14 +110,71 @@
 		pendingCancelPlan = null;
 	}
 
+	async function handlePlanChangeConfirm() {
+		if (!pendingPlanChange) return;
+		
+		checkoutLoading = pendingPlanChange.planId;
+		try {
+			const result = await changePlanDirect(pendingPlanChange.planId);
+			// Refresh subscription data to reflect the change
+			subscriptionStore.refresh();
+			showPlanChangeDialog = false;
+			pendingPlanChange = null;
+			checkoutLoading = null;
+			
+			// Show success message
+			if (result && result.message) {
+				errorMessage = result.message;
+				showErrorDialog = true; // Reusing error dialog for success message
+			}
+		} catch (error) {
+			console.error('Error changing plan directly:', error);
+			// Keep loading state active while redirecting to checkout
+			// Don't show error dialog - just keep the loading state
+			
+			// Immediately redirect to checkout on failure
+			if (pendingPlanChange?.checkoutUrl) {
+				// Keep the dialog open with loading state while redirecting
+				window.location.href = pendingPlanChange.checkoutUrl;
+			} else {
+				// Only clear loading state if we can't redirect
+				checkoutLoading = null;
+				errorMessage = 'Failed to change plan. Please try again or contact support.';
+				showErrorDialog = true;
+				showPlanChangeDialog = false;
+			}
+		}
+	}
+
+	function handlePlanChangeDecline() {
+		if (!pendingPlanChange) return;
+		
+		// Redirect to checkout portal instead
+		if (pendingPlanChange.checkoutUrl) {
+			window.location.href = pendingPlanChange.checkoutUrl;
+		}
+		
+		showPlanChangeDialog = false;
+		pendingPlanChange = null;
+	}
+
+	async function handleBillingPortal() {
+		try {
+			await createPortalLink();
+		} catch (error) {
+			console.error('Error creating billing portal link:', error);
+			errorMessage = 'Failed to access billing portal. Please try again.';
+			showErrorDialog = true;
+		}
+	}
+
 	function getButtonText(planId: string): string {
 		if (checkoutLoading === planId) return 'Processing...';
 		if (isCurrentPlan(planId)) return 'Current Plan';
-		if (subscriptionStore.isUpcomingPlan(planId)) return 'Upcoming Plan';
 		
 		const plan = subscriptionStore.getPlan(planId);
 		if (plan?.billing_interval === 'free') {
-			return subscriptionStore.isSubscribed ? 'Cancel Subscription' : 'Select Free Plan';
+			return subscriptionStore.isSubscribed ? 'Cancel Subscription' : 'Current Plan';
 		}
 		
 		if (!authStore.isLoggedIn) return 'Sign Up to Subscribe';
@@ -108,7 +183,7 @@
 	}
 
 	function isButtonDisabled(planId: string): boolean {
-		return checkoutLoading !== null || isCurrentPlan(planId) || subscriptionStore.isUpcomingPlan(planId);
+		return checkoutLoading !== null || isCurrentPlan(planId);
 	}
 
 	function getPlanIcon(planName: string) {
@@ -144,28 +219,8 @@
 	</div>
 </section>
 
-<!-- Pending Change Notice -->
-{#if subscriptionStore.cancelAtPeriodEnd}
-	<section class="px-6">
-		<div class="max-w-4xl mx-auto">
-			<div class="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/30 p-4">
-				<div class="flex items-start">
-					<AlertCircle class="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
-					<div>
-						<h3 class="text-sm font-semibold text-blue-800 dark:text-blue-200">Plan Change Scheduled</h3>
-						<p class="text-sm text-blue-700 dark:text-blue-300 mt-1">
-							Your current plan will remain active until {subscriptionStore.currentPeriodEnd ? new Date(subscriptionStore.currentPeriodEnd).toLocaleDateString() : 'period end'}.
-							To make immediate changes or cancel the scheduled change, use the billing portal below.
-						</p>
-					</div>
-				</div>
-			</div>
-		</div>
-	</section>
-{/if}
-
 <!-- Pricing Plans -->
-<section class="py-20 {subscriptionStore.cancelAtPeriodEnd ? '' : 'border-t'} px-6">
+<section class="py-20 border-t px-6">
 	<div class="max-w-4xl mx-auto">
 		{#if subscriptionStore.isLoading}
 			<div class="text-center py-8">
@@ -186,34 +241,21 @@
 			<div class="grid gap-6 md:grid-cols-3">
 				{#each getMonthlyAndFreePlans() as plan (plan.id)}
 					{@const isPopular = plan.name.toLowerCase().includes('basic')}
-					{@const isCurrentPlan = subscriptionStore.isCurrentPlan(plan.id)}
-					{@const isUpcomingPlan = subscriptionStore.isUpcomingPlan(plan.id)}
+					{@const isPlanCurrent = isCurrentPlan(plan.id)}
 					
-					<div class="relative border rounded-lg p-6 {isCurrentPlan ? 'bg-green-50 dark:bg-green-900/30' : isUpcomingPlan ? 'bg-blue-50 dark:bg-blue-900/30' : ''}">
-						{#if isCurrentPlan && subscriptionStore.cancelAtPeriodEnd}
-							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
-								<Badge class="bg-blue-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
-									Active until {subscriptionStore.currentPeriodEnd ? new Date(subscriptionStore.currentPeriodEnd).toLocaleDateString() : 'period end'}
-								</Badge>
-							</div>
-						{:else if isCurrentPlan}
+					<div class="relative border rounded-lg p-6 {isPlanCurrent ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' : ''}">
+						{#if isPlanCurrent}
 							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
 								<Badge class="bg-green-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
 									✓ Current Plan
-								</Badge>
-							</div>
-						{:else if isUpcomingPlan}
-							<div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
-								<Badge class="bg-orange-600 text-white px-4 py-1 text-sm font-semibold shadow-md">
-									⏳ Upcoming Plan
 								</Badge>
 							</div>
 						{:else if isPopular}
 							<Badge class="mb-4">Most Popular</Badge>
 						{/if}
 						
-						<div class="text-center mb-6 {isCurrentPlan || isUpcomingPlan ? 'mt-4' : ''}">
-							<h3 class="text-xl font-semibold mb-2 {isCurrentPlan ? 'text-primary' : isUpcomingPlan ? 'text-blue-600 dark:text-blue-400' : ''}">{plan.name}</h3>
+						<div class="text-center mb-6 {isPlanCurrent ? 'mt-4' : ''}">
+							<h3 class="text-xl font-semibold mb-2 {isPlanCurrent ? 'text-primary' : ''}">{plan.name}</h3>
 							
 							<div class="mb-4">
 								{#if plan.billing_interval === 'free'}
@@ -245,7 +287,7 @@
 
 						<Button 
 							class="w-full" 
-							variant={isCurrentPlan ? "secondary" : "default"}
+							variant={isPlanCurrent ? "secondary" : "default"}
 							disabled={isButtonDisabled(plan.id)}
 							onclick={() => handleSubscribe(plan.id)}
 						>
@@ -317,6 +359,18 @@
 			</div>
 		</div>
 		
+		{#if subscriptionStore.isSubscribed}
+			<div class="border rounded-lg p-6 text-center">
+				<h3 class="text-lg font-semibold mb-2">Manage Your Subscription</h3>
+				<p class="text-muted-foreground mb-4">
+					Update your payment methods, view billing history, or download invoices.
+				</p>
+				<Button onclick={handleBillingPortal} variant="outline">
+					Manage Billing
+				</Button>
+			</div>
+		{/if}
+		
 		<div class="border rounded-lg p-6 text-center">
 			<h3 class="text-lg font-semibold mb-2">Questions?</h3>
 			<p class="text-muted-foreground">
@@ -350,7 +404,7 @@
 		<DialogHeader>
 			<DialogTitle>Cancel Subscription</DialogTitle>
 			<DialogDescription>
-				Are you sure you want to cancel your subscription? You'll retain access to all premium features until the end of your current billing period, then automatically switch to the Free plan. You can upgrade again anytime.
+				Are you sure you want to cancel your subscription? Your subscription will be cancelled immediately and you'll switch to the Free plan. You'll receive a prorated refund for the unused portion of your billing period. You can upgrade again anytime.
 			</DialogDescription>
 		</DialogHeader>
 		<DialogFooter class="gap-2">
@@ -366,6 +420,61 @@
 					<Loader2 class="h-4 w-4 animate-spin mr-2" />
 				{/if}
 				Cancel Subscription
+			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>
+
+<!-- Plan Change Confirmation Dialog -->
+<Dialog bind:open={showPlanChangeDialog}>
+	<DialogContent>
+		{#if checkoutLoading === pendingPlanChange?.planId}
+			<!-- Loading overlay -->
+			<div class="absolute inset-0 bg-background/80 backdrop-blur-sm rounded-lg flex items-center justify-center z-10">
+				<div class="text-center">
+					<Loader2 class="h-8 w-8 animate-spin mx-auto mb-3" />
+					<p class="text-sm text-muted-foreground">Processing plan change...</p>
+					<p class="text-xs text-muted-foreground mt-1">Please wait while we update your subscription</p>
+				</div>
+			</div>
+		{/if}
+		
+		<DialogHeader>
+			<DialogTitle>Confirm Plan Change</DialogTitle>
+			<DialogDescription>
+				{#if pendingPlanChange}
+					{@const plan = subscriptionStore.getPlan(pendingPlanChange.planId)}
+					{@const currentPlan = subscriptionStore.currentPlan}
+					{#if plan && currentPlan}
+						You're about to change from <strong>{subscriptionStore.currentPlan?.name}</strong> to <strong>{plan.name}</strong>.
+						
+						{#if plan.price_cents > (currentPlan.price_cents || 0)}
+							<!-- Upgrade -->
+							<br/><br/><strong>Immediate upgrade:</strong> You'll get {plan.name} features right away. Your payment will be prorated - you'll only pay for the time remaining in your billing period.
+						{:else}
+							<!-- Downgrade -->
+							<br/><br/><strong>Immediate downgrade:</strong> You'll switch to {plan.name} features right away. You'll receive a prorated credit for the unused portion of your current plan.
+						{/if}
+						
+						<br/><br/>We'll use your existing payment method. You can also use our secure checkout portal if you prefer.
+					{/if}
+				{/if}
+			</DialogDescription>
+		</DialogHeader>
+		<DialogFooter class="gap-2">
+			<Button variant="outline" onclick={handlePlanChangeDecline} disabled={checkoutLoading !== null}>
+				Use Secure Checkout
+			</Button>
+			<Button 
+				onclick={handlePlanChangeConfirm}
+				disabled={checkoutLoading !== null}
+			>
+				{#if checkoutLoading === pendingPlanChange?.planId}
+					<Loader2 class="h-4 w-4 animate-spin mr-2" />
+					Processing...
+				{:else}
+					Confirm Plan Change
+				{/if}
 			</Button>
 		</DialogFooter>
 	</DialogContent>

@@ -466,8 +466,32 @@
 						Change Plan
 					</button>
 				</div>
+			{:else if subscriptionStore.getEffectiveCurrentPlan()}
+				<!-- Free Plan -->
+				{@const freePlan = subscriptionStore.getEffectiveCurrentPlan()}
+				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
+					<div class="flex items-center gap-4">
+						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+							<User class="w-5 h-5 text-muted-foreground" />
+						</div>
+						<div>
+							<h4 class="text-lg font-semibold">{freePlan?.name}</h4>
+							<p class="text-sm text-muted-foreground">
+								{freePlan?.hours_per_month} hour{freePlan?.hours_per_month !== 1 ? 's' : ''} per month
+								• Free
+							</p>
+						</div>
+					</div>
+					<button
+						onclick={() => goto('/pricing')}
+						class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+					>
+						<Crown class="w-4 h-4" />
+						Upgrade
+					</button>
+				</div>
 			{:else}
-				<!-- No Active Plan -->
+				<!-- Fallback: No Plan Found -->
 				<div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
 					<div class="flex items-center gap-4">
 						<div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
