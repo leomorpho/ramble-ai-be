@@ -154,8 +154,8 @@ func main() {
 		})
 
 
-		// Health check endpoint for Kamal deployment
-		se.Router.GET("/api/health", func(e *core.RequestEvent) error {
+		// Health check endpoint for Kamal deployment - using custom path to avoid conflict
+		se.Router.GET("/api/healthcheck", func(e *core.RequestEvent) error {
 			return e.JSON(200, map[string]interface{}{
 				"status": "ok",
 				"timestamp": time.Now().Unix(),
