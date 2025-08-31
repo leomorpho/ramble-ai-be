@@ -167,6 +167,17 @@ func SendOTPEmail(app core.App, email, otpCode, purpose string) error {
 
 // SendOTPHandler handles OTP generation and sending
 func SendOTPHandler(e *core.RequestEvent, app core.App) error {
+	// Set CORS headers
+	e.Response.Header().Set("Access-Control-Allow-Origin", "*")
+	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	
+	// Handle preflight OPTIONS requests
+	if e.Request.Method == "OPTIONS" {
+		e.Response.WriteHeader(204)
+		return nil
+	}
+
 	data := struct {
 		Email   string `json:"email" form:"email"`
 		UserID  string `json:"user_id" form:"user_id"`
@@ -200,6 +211,17 @@ func SendOTPHandler(e *core.RequestEvent, app core.App) error {
 
 // VerifyOTPHandler handles OTP verification
 func VerifyOTPHandler(e *core.RequestEvent, app core.App) error {
+	// Set CORS headers
+	e.Response.Header().Set("Access-Control-Allow-Origin", "*")
+	e.Response.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	e.Response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	
+	// Handle preflight OPTIONS requests
+	if e.Request.Method == "OPTIONS" {
+		e.Response.WriteHeader(204)
+		return nil
+	}
+
 	data := struct {
 		UserID  string `json:"user_id" form:"user_id"`
 		OTPCode string `json:"otp_code" form:"otp_code"`

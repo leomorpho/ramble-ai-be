@@ -1,8 +1,9 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
-  import { Key, Copy, Plus, AlertTriangle, CheckCircle, Shield } from 'lucide-svelte';
+  import { Key, Copy, Plus, AlertTriangle, CheckCircle, Shield, Info } from 'lucide-svelte';
   import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+  import * as Dialog from '$lib/components/ui/dialog/index.js';
   import { pb } from '$lib/pocketbase.js';
   import { authStore } from '$lib/stores/authClient.svelte.js';
   import { onMount } from 'svelte';
@@ -23,6 +24,9 @@
   
   // Confirmation dialog state
   let showConfirmDialog = $state(false);
+  
+  // Help dialog state
+  let showHelpDialog = $state(false);
 
   // Load API keys on mount
   onMount(async () => {
@@ -210,7 +214,17 @@
 
 <div class="border rounded-lg p-6">
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-lg font-semibold">API Key Management</h3>
+    <div class="flex items-center gap-2">
+      <h3 class="text-lg font-semibold">API Key Management</h3>
+      <Button
+        variant="ghost"
+        size="sm"
+        onclick={() => showHelpDialog = true}
+        class="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+      >
+        <Info class="w-4 h-4" />
+      </Button>
+    </div>
     <Button
       size="sm"
       onclick={handleGenerateClick}
@@ -300,17 +314,6 @@
     </div>
   {/if}
 
-  <!-- Help Text -->
-  <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-    <h4 class="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">Using Your API Key</h4>
-    <ul class="text-sm text-blue-700 dark:text-blue-300 space-y-2">
-      <li>• Copy your API key and paste it into the Ramble AI desktop application settings</li>
-      <li>• <strong>You can only have one API key at a time</strong> - generating a new one replaces the old one</li>
-      <li>• API keys are only shown once during creation - you cannot view them again</li>
-      <li>• Keep your API key secure - anyone with access can use your account</li>
-      <li>• Generate a new key anytime to replace your current one</li>
-    </ul>
-  </div>
 </div>
 
 <!-- Confirmation Dialog -->
@@ -349,3 +352,23 @@
     </AlertDialog.Footer>
   </AlertDialog.Content>
 </AlertDialog.Root>
+
+<!-- Help Dialog -->
+<Dialog.Root bind:open={showHelpDialog}>
+  <Dialog.Content class="sm:max-w-[400px]">
+    <Dialog.Header>
+      <Dialog.Title class="flex items-center gap-2">
+        <Info class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        Using Your API Key
+      </Dialog.Title>
+    </Dialog.Header>
+    <div class="space-y-3 py-4">
+      <div class="text-sm text-muted-foreground space-y-2">
+        <p>• Copy your key into Ramble AI desktop app settings</p>
+        <p>• Only one active key at a time - new keys replace old ones</p>
+        <p>• Keys are shown once only - copy immediately</p>
+        <p>• Keep secure - anyone with access can use your account</p>
+      </div>
+    </div>
+  </Dialog.Content>
+</Dialog.Root>

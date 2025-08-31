@@ -23,6 +23,7 @@
 	let success = $state<string | null>(null);
 	let timeLeft = $state(600); // 10 minutes in seconds
 	let canResend = $state(false);
+	let timer = $state<NodeJS.Timeout | null>(null);
 
 	// Format time remaining
 	let timeFormatted = $derived.by(() => {
@@ -33,13 +34,21 @@
 
 	// Start countdown timer
 	function startTimer() {
+		// Clear any existing timer
+		if (timer) {
+			clearInterval(timer);
+		}
+		
 		timeLeft = 600; // Reset to 10 minutes
 		canResend = false;
 		
-		const timer = setInterval(() => {
+		timer = setInterval(() => {
 			timeLeft--;
 			if (timeLeft <= 0) {
-				clearInterval(timer);
+				if (timer) {
+					clearInterval(timer);
+					timer = null;
+				}
 				canResend = true;
 			}
 		}, 1000);
@@ -48,6 +57,16 @@
 	// Send OTP on component mount
 	$effect(() => {
 		sendOTP();
+	});
+
+	// Cleanup timer on component unmount
+	$effect(() => {
+		return () => {
+			if (timer) {
+				clearInterval(timer);
+				timer = null;
+			}
+		};
 	});
 
 	// Send OTP code

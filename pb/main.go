@@ -77,6 +77,7 @@ func main() {
 
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+
 		// Initialize services for route handlers
 		paymentService, err := payment.NewStripeService()
 		if err != nil {
@@ -176,7 +177,15 @@ func main() {
 			return otphandlers.SendOTPHandler(e, app)
 		})
 
+		se.Router.OPTIONS("/send-otp", func(e *core.RequestEvent) error {
+			return otphandlers.SendOTPHandler(e, app)
+		})
+
 		se.Router.POST("/verify-otp", func(e *core.RequestEvent) error {
+			return otphandlers.VerifyOTPHandler(e, app)
+		})
+
+		se.Router.OPTIONS("/verify-otp", func(e *core.RequestEvent) error {
 			return otphandlers.VerifyOTPHandler(e, app)
 		})
 
