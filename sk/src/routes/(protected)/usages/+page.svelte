@@ -230,15 +230,6 @@
 		<p class="text-xl text-muted-foreground mb-6">
 			Track your video processing usage and history
 		</p>
-		<div class="border rounded-lg p-4 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
-			<div class="flex items-start gap-3 text-sm text-green-800 dark:text-green-200">
-				<Shield class="h-4 w-4 mt-0.5 flex-shrink-0" />
-				<p>
-					<strong>Privacy First:</strong> Videos stay on your device. Only audio is sent to our servers for transcription and is never stored or backed up. 
-					We only track processing metadata for usage statistics.
-				</p>
-			</div>
-		</div>
 	</div>
 </section>
 
@@ -271,7 +262,11 @@
 	<!-- Summary Cards Section -->
 	<section class="py-20 border-t px-6">
 		<div class="max-w-4xl mx-auto">
-			<h2 class="text-3xl md:text-4xl font-bold mb-8">Overview</h2>
+			<h2 class="text-3xl md:text-4xl font-bold mb-2">Overview</h2>
+			<div class="mb-8 text-sm text-muted-foreground flex items-center gap-2">
+				<Shield class="h-4 w-4" />
+				<span><strong>Privacy First:</strong> Videos stay on your device. Only audio is sent to our servers for transcription and is never stored or backed up. We only track processing metadata for usage statistics.</span>
+			</div>
 			<div class="grid gap-6 {hasBeenMoreThanOneMonth() ? 'md:grid-cols-2' : 'md:grid-cols-1'}">
 				{#if hasBeenMoreThanOneMonth()}
 					<!-- This Month Card -->
