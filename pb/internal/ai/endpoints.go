@@ -11,9 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -543,22 +541,11 @@ func getClientIP(e *core.RequestEvent) string {
 	return e.Request.RemoteAddr
 }
 
-// getAudioDuration extracts audio duration using ffprobe
-func getAudioDuration(filePath string) (float64, error) {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe failed: %w", err)
-	}
-	
-	durationStr := strings.TrimSpace(string(output))
-	duration, err := strconv.ParseFloat(durationStr, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse duration: %w", err)
-	}
-	
-	return duration, nil
-}
+// getAudioDuration - DEPRECATED: Now using duration from OpenAI response
+// Previously used ffprobe to extract audio duration, but this required FFmpeg/ffprobe installation.
+// Now we get accurate duration directly from OpenAI Whisper API response.
+// Keeping function signature for reference but not using it.
+// func getAudioDuration(filePath string) (float64, error)
 
 // ProcessAudioHandler handles audio transcription requests using PocketBase native file uploads
 func ProcessAudioHandler(e *core.RequestEvent, app core.App) error {
@@ -647,50 +634,25 @@ func ProcessAudioHandler(e *core.RequestEvent, app core.App) error {
 			userEmail, filename, fileSizeKB, clientIP)
 	}
 
-	// For non-chunks, validate usage limits using actual audio duration
+	// For non-chunks, validate usage limits using estimated audio duration
+	// Note: We use file size estimation for pre-validation, then use actual duration from OpenAI response
 	if !isChunk {
-		// Create temporary file to extract duration
-		tempFile, err := os.CreateTemp("", "audio_*.tmp")
-		if err != nil {
-			log.Printf("⚠️  [AI AUDIO REQUEST] Warning: Failed to create temp file, using file size estimate | User: %s", userEmail)
-			// Fallback to file-size estimation
-			estimatedDurationSeconds := float64(fileSize) / 1048576.0 * 60.0
-			if err := validateUsageLimits(app, userID, estimatedDurationSeconds/3600.0); err != nil {
-				return e.JSON(403, map[string]string{"error": err.Error(), "code": "USAGE_LIMIT_EXCEEDED"})
-			}
-		} else {
-			defer os.Remove(tempFile.Name())
-			defer tempFile.Close()
-			
-			// Copy file data to temp file
-			if _, err := file.Seek(0, 0); err == nil {
-				if _, err := io.Copy(tempFile, file); err == nil {
-					// Extract actual duration
-					if actualDuration, err := getAudioDuration(tempFile.Name()); err == nil {
-						// Validate using actual duration
-						if err := validateUsageLimits(app, userID, actualDuration/3600.0); err != nil {
-							log.Printf("❌ [AI AUDIO REQUEST] FAILED: Usage limit exceeded | User: %s | Actual hours: %.2f | IP: %s | Error: %v", 
-								userEmail, actualDuration/3600.0, clientIP, err)
-							return e.JSON(403, map[string]string{
-								"error": err.Error(),
-								"code":  "USAGE_LIMIT_EXCEEDED",
-							})
-						}
-						log.Printf("✅ [AI AUDIO REQUEST] Duration validation passed | User: %s | Actual duration: %.2fs (%.3f hours)", 
-							userEmail, actualDuration, actualDuration/3600.0)
-					} else {
-						log.Printf("⚠️  [AI AUDIO REQUEST] Warning: Failed to extract duration, using file size estimate | User: %s | Error: %v", userEmail, err)
-						// Fallback to file-size estimation
-						estimatedDurationSeconds := float64(fileSize) / 1048576.0 * 60.0
-						if err := validateUsageLimits(app, userID, estimatedDurationSeconds/3600.0); err != nil {
-							return e.JSON(403, map[string]string{"error": err.Error(), "code": "USAGE_LIMIT_EXCEEDED"})
-						}
-					}
-				}
-			}
-			// Reset file position for subsequent processing
-			file.Seek(0, 0)
+		// Estimate duration based on file size (1MB ≈ 1 minute for typical audio)
+		// This is conservative to prevent abuse while actual duration comes from OpenAI
+		estimatedDurationSeconds := float64(fileSize) / 1048576.0 * 60.0
+		
+		log.Printf("📏 [AI AUDIO REQUEST] Pre-validation | User: %s | File size: %d KB | Estimated duration: %.2fs (%.3f hours)", 
+			userEmail, fileSizeKB, estimatedDurationSeconds, estimatedDurationSeconds/3600.0)
+		
+		// Pre-validate using estimated duration
+		if err := validateUsageLimits(app, userID, estimatedDurationSeconds/3600.0); err != nil {
+			log.Printf("❌ [AI AUDIO REQUEST] FAILED: Usage limit exceeded (pre-validation) | User: %s | Estimated hours: %.3f | IP: %s | Error: %v", 
+				userEmail, estimatedDurationSeconds/3600.0, clientIP, err)
+			return e.JSON(403, map[string]string{"error": err.Error(), "code": "USAGE_LIMIT_EXCEEDED"})
 		}
+		
+		// Reset file position for subsequent processing
+		file.Seek(0, 0)
 	}
 
 	// Create initial processed_files record with chunk metadata

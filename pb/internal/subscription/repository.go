@@ -244,7 +244,7 @@ func (r *PocketBaseRepository) GetFreePlan() (*core.Record, error) {
 
 // GetAllPlans retrieves all available subscription plans ordered by price (cheapest to most expensive)
 func (r *PocketBaseRepository) GetAllPlans() ([]*core.Record, error) {
-	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true", "+price", 0, 0)
+	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true", "+price_cents", 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all plans: %w", err)
 	}
@@ -260,7 +260,7 @@ func (r *PocketBaseRepository) GetAvailableUpgrades(currentPlanID string) ([]*co
 
 	currentHoursLimit := currentPlan.GetFloat("hours_per_month")
 
-	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true && hours_per_month > {:current_hours}", "+price", 0, 0, map[string]any{
+	records, err := r.app.FindRecordsByFilter("subscription_plans", "is_active = true && hours_per_month > {:current_hours}", "+price_cents", 0, 0, map[string]any{
 		"current_hours": currentHoursLimit,
 	})
 	if err != nil {

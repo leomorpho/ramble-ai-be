@@ -27,6 +27,11 @@ func SeedAll(app core.App) error {
 		log.Printf("Warning: Failed to seed app versions: %v", err)
 	}
 
+	// Seed banners
+	if err := SeedBanners(app); err != nil {
+		log.Printf("Warning: Failed to seed banners: %v", err)
+	}
+
 	log.Println("🎉 Seeding completed")
 	return nil
 }

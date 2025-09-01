@@ -48,6 +48,9 @@ env:
     DEVELOPMENT: false
     HOST: https://api.ramble.goosebyteshq.com
     FRONTEND_URL: https://ramble.goosebyteshq.com
+    EMAIL_FROM: noreply@ramble.goosebyteshq.com
+    EMAIL_FROM_NAME: Ramble AI
+    DEVELOPMENT: false
   secret:
     - STRIPE_SECRET_KEY
     - STRIPE_SECRET_WHSEC
@@ -55,11 +58,11 @@ env:
     - SMTP_PORT
     - SMTP_USERNAME
     - SMTP_PASSWORD
-    - EMAIL_FROM
-    - EMAIL_FROM_NAME
     - RESEND_API_KEY
     - ADMIN_EMAIL
     - ADMIN_PASSWORD
+    - OPENAI_API_KEY
+    - OPENROUTER_API_KEY 
 
 # Aliases are triggered with "bin/kamal <alias>". You can overwrite arguments on invocation:
 # "bin/kamal app logs -r job" will tail logs from the first server in the job section.
