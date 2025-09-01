@@ -177,7 +177,7 @@ func (m *MockApp) GetUserSubscriptionInfo(userID string) (*MockSubscriptionInfo,
 	return nil, fmt.Errorf("subscription not found")
 }
 
-// Adapted validation functions to work with mock types
+// Adapted validation functions to work with mock types - Updated to match the new free tier logic
 func validateUsageLimitsMock(app *MockApp, userID string, hoursToAdd float64) error {
 	currentMonth := time.Now().Format("2006-01")
 	
@@ -195,16 +195,27 @@ func validateUsageLimitsMock(app *MockApp, userID string, hoursToAdd float64) er
 		currentHoursUsed = monthlyUsageRecord.GetFloat("hours_used")
 	}
 	
+	var monthlyLimitHours float64
 	subscriptionInfo, err := app.GetUserSubscriptionInfo(userID)
 	if err != nil {
-		return fmt.Errorf("unable to determine subscription plan: %w", err)
+		// Fallback to free tier limits (30 minutes = 0.5 hours) if subscription service fails
+		monthlyLimitHours = 0.5 // 30 minutes for free users
+	} else {
+		monthlyLimitHours = subscriptionInfo.Plan.GetFloat("hours_per_month")
 	}
 	
-	monthlyLimitHours := subscriptionInfo.Plan.GetFloat("hours_per_month")
 	projectedUsage := currentHoursUsed + hoursToAdd
 	
 	if projectedUsage > monthlyLimitHours {
-		planName := subscriptionInfo.Plan.GetString("name")
+		var planName string
+		if subscriptionInfo != nil {
+			planName = subscriptionInfo.Plan.GetString("name")
+			if planName == "" {
+				planName = "Free" // Fallback if plan name is empty
+			}
+		} else {
+			planName = "Free" // Fallback plan name
+		}
 		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours)", 
 			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd)
 	}
@@ -381,17 +392,54 @@ func TestValidateUsageLimits_DifferentPlanLimits(t *testing.T) {
 	}
 }
 
-// Test validateUsageLimits - Error cases
-func TestValidateUsageLimits_ErrorCases(t *testing.T) {
+// Test validateUsageLimits - Free tier fallback for users without subscriptions
+func TestValidateUsageLimits_FreeTierFallback_NoSubscription(t *testing.T) {
 	app := NewMockApp()
 	
-	// Test invalid user ID (no subscription)
-	err := validateUsageLimitsMock(app, "invalid_user", 1.0)
-	if err == nil {
-		t.Fatal("Expected error for invalid user ID, got nil")
+	// Test user without subscription - should get free tier limits (30 minutes = 0.5 hours)
+	userID := "no_subscription_user"
+	// Don't set subscription or plan - user has no subscription
+	
+	// Should allow 0.3 hours (18 minutes) for free users
+	err := validateUsageLimitsMock(app, userID, 0.3)
+	if err != nil {
+		t.Fatalf("Expected no error for free user under 30min limit, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unable to determine subscription plan") {
-		t.Fatalf("Expected subscription error, got: %s", err.Error())
+	
+	// Should block 0.6 hours (36 minutes) for free users
+	err = validateUsageLimitsMock(app, userID, 0.6)
+	if err == nil {
+		t.Fatal("Expected error for free user over 30min limit, got nil")
+	}
+	
+	if !strings.Contains(err.Error(), "monthly limit of 0.5 hours exceeded for Free plan") {
+		t.Fatalf("Expected free tier limit error, got: %s", err.Error())
+	}
+}
+
+// Test validateUsageLimits - Free tier with existing usage
+func TestValidateUsageLimits_FreeTierWithUsage(t *testing.T) {
+	app := NewMockApp()
+	
+	userID := "free_user_with_usage"
+	currentMonth := time.Now().Format("2006-01")
+	// User has used 0.4 hours (24 minutes) already
+	app.SetMonthlyUsage(userID, currentMonth, 0.4, 2)
+	
+	// Should allow 0.1 hours (6 minutes) more - total would be 0.5 hours (30min)
+	err := validateUsageLimitsMock(app, userID, 0.1)
+	if err != nil {
+		t.Fatalf("Expected no error for free user at limit, got: %v", err)
+	}
+	
+	// Should block 0.2 hours (12 minutes) - total would be 0.6 hours (36min)
+	err = validateUsageLimitsMock(app, userID, 0.2)
+	if err == nil {
+		t.Fatal("Expected error for free user exceeding 30min limit")
+	}
+	
+	if !strings.Contains(err.Error(), "currently used: 0.40 hours, requested: 0.20 hours") {
+		t.Fatalf("Expected detailed usage error message, got: %s", err.Error())
 	}
 }
 

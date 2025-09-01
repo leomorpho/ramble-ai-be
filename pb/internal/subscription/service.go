@@ -232,7 +232,15 @@ func (s *SubscriptionService) GetUserSubscriptionInfo(userID string) (*Subscript
 	// Get user's active subscription
 	subscription, err := s.repo.FindActiveSubscription(userID)
 	if err != nil {
-		return nil, fmt.Errorf("no subscription found for user %s: %w", userID, err)
+		// No active subscription found - user should be on free plan
+		log.Printf("No subscription found for user %s, assigning to free plan", userID)
+		
+		// Automatically assign user to free plan
+		freeSubscription, freeErr := s.SwitchToFreePlan(userID)
+		if freeErr != nil {
+			return nil, fmt.Errorf("no subscription found for user %s and failed to assign free plan: %w", userID, freeErr)
+		}
+		subscription = freeSubscription
 	}
 
 	// Determine which plan to use for benefits/limits

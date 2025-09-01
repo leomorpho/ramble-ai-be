@@ -313,19 +313,27 @@ func validateUsageLimits(app core.App, userID string, hoursToAdd float64) error 
 	repo := subscription.NewRepository(app)
 	subscriptionService := subscription.NewService(repo)
 	
+	var monthlyLimitHours float64
 	subscriptionInfo, err := subscriptionService.GetUserSubscriptionInfo(userID)
 	if err != nil {
-		return fmt.Errorf("unable to determine subscription plan: %w", err)
+		// Fallback to free tier limits (30 minutes = 0.5 hours) if subscription service fails
+		log.Printf("⚠️  [USAGE VALIDATION] Subscription service failed for user %s, using free tier limits: %v", userID, err)
+		monthlyLimitHours = 0.5 // 30 minutes for free users
+	} else {
+		monthlyLimitHours = subscriptionInfo.Plan.GetFloat("hours_per_month")
 	}
-	
-	monthlyLimitHours := subscriptionInfo.Plan.GetFloat("hours_per_month")
 	
 	// Calculate total usage after processing this audio
 	projectedUsage := currentHoursUsed + hoursToAdd
 	
 	// Check if projected usage exceeds limit
 	if projectedUsage > monthlyLimitHours {
-		planName := subscriptionInfo.Plan.GetString("name")
+		var planName string
+		if subscriptionInfo != nil && subscriptionInfo.Plan != nil {
+			planName = subscriptionInfo.Plan.GetString("name")
+		} else {
+			planName = "Free" // Fallback plan name
+		}
 		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours)", 
 			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd)
 	}
@@ -585,12 +593,8 @@ func ProcessAudioHandler(e *core.RequestEvent, app core.App) error {
 	log.Printf("👤 [AI AUDIO REQUEST] User: %s (%s) | API Key: %s | IP: %s", 
 		userEmail, userID, maskedKey, clientIP)
 
-	// Check user's subscription status and usage limits
-	if !isUserSubscribed(app, userID) {
-		log.Printf("❌ [AI AUDIO REQUEST] FAILED: No active subscription | User: %s | IP: %s", 
-			userEmail, clientIP)
-		return e.JSON(403, map[string]string{"error": "Active subscription required"})
-	}
+	// Note: Removed hard subscription check - free users get 30min/month
+	// Usage limits will be validated in validateUsageLimits function
 
 	// Parse multipart form data using PocketBase's capabilities (handles large files)
 	err = e.Request.ParseMultipartForm(500 << 20) // 500MB max memory for large audio files, rest goes to disk
