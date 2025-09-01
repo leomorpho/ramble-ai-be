@@ -288,15 +288,104 @@ func validateAPIKey(app core.App, apiKey string) (*core.Record, error) {
 	return userRecord, nil
 }
 
-// Placeholder functions for usage validation - TODO: Implement proper usage tracking
-func validateUsageLimits(app core.App, userID string, hoursUsed float64) error {
-	log.Printf("TODO: Validate usage limits for user %s, hours: %.2f", userID, hoursUsed)
-	return nil // Allow for now
+// validateUsageLimits checks if user can process additional audio without exceeding monthly limits
+func validateUsageLimits(app core.App, userID string, hoursToAdd float64) error {
+	// Get current month in YYYY-MM format
+	currentMonth := time.Now().Format("2006-01")
+	
+	// Find user's current monthly usage record
+	monthlyUsageRecord, err := app.FindFirstRecordByFilter("monthly_usage", 
+		"user_id = {:user_id} && year_month = {:month}", 
+		map[string]interface{}{
+			"user_id": userID,
+			"month":   currentMonth,
+		})
+	
+	var currentHoursUsed float64
+	if err != nil {
+		// No usage record exists for this month - user starts at 0
+		currentHoursUsed = 0
+	} else {
+		currentHoursUsed = monthlyUsageRecord.GetFloat("hours_used")
+	}
+	
+	// Get user's subscription plan to find their monthly limit
+	repo := subscription.NewRepository(app)
+	subscriptionService := subscription.NewService(repo)
+	
+	subscriptionInfo, err := subscriptionService.GetUserSubscriptionInfo(userID)
+	if err != nil {
+		return fmt.Errorf("unable to determine subscription plan: %w", err)
+	}
+	
+	monthlyLimitHours := subscriptionInfo.Plan.GetFloat("hours_per_month")
+	
+	// Calculate total usage after processing this audio
+	projectedUsage := currentHoursUsed + hoursToAdd
+	
+	// Check if projected usage exceeds limit
+	if projectedUsage > monthlyLimitHours {
+		planName := subscriptionInfo.Plan.GetString("name")
+		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours)", 
+			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd)
+	}
+	
+	log.Printf("✅ [USAGE VALIDATION] User %s: %.2f/%.1f hours used (adding %.2f hours)", 
+		userID, currentHoursUsed, monthlyLimitHours, hoursToAdd)
+	
+	return nil
 }
 
 func updateUsageAfterProcessing(app core.App, userID string, durationSeconds float64) error {
-	log.Printf("TODO: Update usage after processing for user %s, duration: %.2fs", userID, durationSeconds)
-	return nil // No-op for now
+	hoursUsed := durationSeconds / 3600.0
+	currentMonth := time.Now().Format("2006-01")
+	
+	// Try to find existing monthly usage record
+	monthlyUsageRecord, err := app.FindFirstRecordByFilter("monthly_usage",
+		"user_id = {:user_id} && year_month = {:month}",
+		map[string]interface{}{
+			"user_id": userID,
+			"month":   currentMonth,
+		})
+	
+	if err != nil {
+		// No record exists - create new one
+		collection, err := app.FindCollectionByNameOrId("monthly_usage")
+		if err != nil {
+			return fmt.Errorf("failed to find monthly_usage collection: %w", err)
+		}
+		
+		record := core.NewRecord(collection)
+		record.Set("user_id", userID)
+		record.Set("year_month", currentMonth)
+		record.Set("hours_used", hoursUsed)
+		record.Set("files_processed", 1)
+		record.Set("last_processing_date", time.Now())
+		
+		if err := app.Save(record); err != nil {
+			return fmt.Errorf("failed to create monthly usage record: %w", err)
+		}
+		
+		log.Printf("📊 [USAGE UPDATE] Created new monthly usage record for user %s: %.3f hours", 
+			userID, hoursUsed)
+	} else {
+		// Update existing record
+		currentHours := monthlyUsageRecord.GetFloat("hours_used")
+		currentFiles := monthlyUsageRecord.GetInt("files_processed")
+		
+		monthlyUsageRecord.Set("hours_used", currentHours + hoursUsed)
+		monthlyUsageRecord.Set("files_processed", currentFiles + 1)
+		monthlyUsageRecord.Set("last_processing_date", time.Now())
+		
+		if err := app.Save(monthlyUsageRecord); err != nil {
+			return fmt.Errorf("failed to update monthly usage record: %w", err)
+		}
+		
+		log.Printf("📊 [USAGE UPDATE] Updated monthly usage for user %s: %.3f hours (was %.3f, added %.3f)", 
+			userID, currentHours + hoursUsed, currentHours, hoursUsed)
+	}
+	
+	return nil
 }
 
 func isUserSubscribed(app core.App, userID string) bool {
