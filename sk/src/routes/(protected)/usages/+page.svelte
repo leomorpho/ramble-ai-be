@@ -205,6 +205,14 @@
 			default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
 		}
 	}
+
+	function hasBeenMoreThanOneMonth(): boolean {
+		if (!authStore.user?.created) return false;
+		const registrationDate = new Date(authStore.user.created);
+		const oneMonthAgo = new Date();
+		oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+		return registrationDate <= oneMonthAgo;
+	}
 </script>
 
 <svelte:head>
@@ -264,24 +272,17 @@
 	<section class="py-20 border-t px-6">
 		<div class="max-w-4xl mx-auto">
 			<h2 class="text-3xl md:text-4xl font-bold mb-8">Overview</h2>
-			<div class="grid gap-6 md:grid-cols-3">
-				<!-- This Month Card -->
-				<div class="border rounded-lg p-6">
-					<div class="flex items-center justify-between mb-3">
-						<span class="text-sm font-medium text-muted-foreground">This Month</span>
-						<Calendar class="h-4 w-4 text-muted-foreground" />
+			<div class="grid gap-6 {hasBeenMoreThanOneMonth() ? 'md:grid-cols-2' : 'md:grid-cols-1'}">
+				{#if hasBeenMoreThanOneMonth()}
+					<!-- This Month Card -->
+					<div class="border rounded-lg p-6">
+						<div class="flex items-center justify-between mb-3">
+							<span class="text-sm font-medium text-muted-foreground">This Month</span>
+							<Calendar class="h-4 w-4 text-muted-foreground" />
+						</div>
+						<div class="text-2xl font-bold">{currentMonthSummary ? formatDuration(currentMonthSummary.total_duration_seconds) : '0s'}</div>
 					</div>
-					<div class="text-2xl font-bold">{currentMonthSummary ? formatDuration(currentMonthSummary.total_duration_seconds) : '0s'}</div>
-				</div>
-
-				<!-- Success Rate Card -->
-				<div class="border rounded-lg p-6">
-					<div class="flex items-center justify-between mb-3">
-						<span class="text-sm font-medium text-muted-foreground">Success Rate</span>
-						<TrendingUp class="h-4 w-4 text-muted-foreground" />
-					</div>
-					<div class="text-2xl font-bold">{currentMonthSummary ? currentMonthSummary.success_rate.toFixed(1) : '0.0'}%</div>
-				</div>
+				{/if}
 
 				<!-- Total Processing Card -->
 				<div class="border rounded-lg p-6">
