@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/hajimehoshi/go-mp3"
 	"pocketbase/internal/subscription"
 )
 
@@ -288,6 +290,15 @@ func validateAPIKey(app core.App, apiKey string) (*core.Record, error) {
 
 // validateUsageLimits checks if user can process additional audio without exceeding monthly limits
 func validateUsageLimits(app core.App, userID string, hoursToAdd float64) error {
+	// Get grace period from environment variable (default to 60 seconds if not set)
+	gracePeriodSeconds := 60.0
+	if gracePeriodEnv := os.Getenv("USAGE_GRACE_PERIOD_SECONDS"); gracePeriodEnv != "" {
+		if parsed, err := strconv.ParseFloat(gracePeriodEnv, 64); err == nil {
+			gracePeriodSeconds = parsed
+		}
+	}
+	gracePeriodHours := gracePeriodSeconds / 3600.0
+
 	// Get current month in YYYY-MM format
 	currentMonth := time.Now().Format("2006-01")
 	
@@ -326,14 +337,25 @@ func validateUsageLimits(app core.App, userID string, hoursToAdd float64) error 
 	
 	// Check if projected usage exceeds limit
 	if projectedUsage > monthlyLimitHours {
+		// Calculate how much the user would exceed their limit
+		excessHours := projectedUsage - monthlyLimitHours
+		
+		// Apply grace period logic: allow if excess is within grace period
+		if excessHours <= gracePeriodHours {
+			log.Printf("🎁 [GRACE PERIOD] User %s exceeding limit by %.2f hours, within grace period of %.2f hours - allowing", 
+				userID, excessHours, gracePeriodHours)
+			return nil
+		}
+		
+		// Excess is beyond grace period - reject
 		var planName string
 		if subscriptionInfo != nil && subscriptionInfo.Plan != nil {
 			planName = subscriptionInfo.Plan.GetString("name")
 		} else {
 			planName = "Free" // Fallback plan name
 		}
-		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours)", 
-			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd)
+		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours, grace period: %.0f seconds)", 
+			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd, gracePeriodSeconds)
 	}
 	
 	log.Printf("✅ [USAGE VALIDATION] User %s: %.2f/%.1f hours used (adding %.2f hours)", 
@@ -541,11 +563,49 @@ func getClientIP(e *core.RequestEvent) string {
 	return e.Request.RemoteAddr
 }
 
-// getAudioDuration - DEPRECATED: Now using duration from OpenAI response
-// Previously used ffprobe to extract audio duration, but this required FFmpeg/ffprobe installation.
-// Now we get accurate duration directly from OpenAI Whisper API response.
-// Keeping function signature for reference but not using it.
-// func getAudioDuration(filePath string) (float64, error)
+// getMP3Duration extracts duration from MP3 files using pure Go library
+func getMP3Duration(audioFile multipart.File) (float64, error) {
+	// Reset file position to beginning
+	if _, err := audioFile.Seek(0, 0); err != nil {
+		return 0, fmt.Errorf("failed to seek to beginning of file: %w", err)
+	}
+
+	decoder, err := mp3.NewDecoder(audioFile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create MP3 decoder: %w", err)
+	}
+	
+	// Get sample rate
+	sampleRate := decoder.SampleRate()
+	
+	// Count total samples by reading through the entire file
+	var totalSamples int64
+	buf := make([]byte, 4096)
+	
+	for {
+		n, err := decoder.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, fmt.Errorf("failed to read MP3 data: %w", err)
+		}
+		// Each sample is 4 bytes (2 channels * 2 bytes per channel)
+		totalSamples += int64(n / 4)
+	}
+	
+	if sampleRate == 0 {
+		return 0, fmt.Errorf("invalid sample rate in MP3 file")
+	}
+	
+	// Calculate duration in seconds
+	duration := float64(totalSamples) / float64(sampleRate)
+	
+	// Reset file position for subsequent use
+	audioFile.Seek(0, 0)
+	
+	return duration, nil
+}
 
 // ProcessAudioHandler handles audio transcription requests using PocketBase native file uploads
 func ProcessAudioHandler(e *core.RequestEvent, app core.App) error {
@@ -634,20 +694,23 @@ func ProcessAudioHandler(e *core.RequestEvent, app core.App) error {
 			userEmail, filename, fileSizeKB, clientIP)
 	}
 
-	// For non-chunks, validate usage limits using estimated audio duration
-	// Note: We use file size estimation for pre-validation, then use actual duration from OpenAI response
+	// For non-chunks, validate usage limits using actual MP3 duration
 	if !isChunk {
-		// Estimate duration based on file size (1MB ≈ 1 minute for typical audio)
-		// This is conservative to prevent abuse while actual duration comes from OpenAI
-		estimatedDurationSeconds := float64(fileSize) / 1048576.0 * 60.0
+		// Parse actual MP3 duration instead of estimating from file size
+		actualDurationSeconds, err := getMP3Duration(file)
+		if err != nil {
+			// Fallback to file size estimation if MP3 parsing fails
+			log.Printf("⚠️  [AI AUDIO REQUEST] MP3 duration parsing failed, using file size estimation: %v", err)
+			actualDurationSeconds = float64(fileSize) / 1048576.0 * 60.0
+		}
 		
-		log.Printf("📏 [AI AUDIO REQUEST] Pre-validation | User: %s | File size: %d KB | Estimated duration: %.2fs (%.3f hours)", 
-			userEmail, fileSizeKB, estimatedDurationSeconds, estimatedDurationSeconds/3600.0)
+		log.Printf("📏 [AI AUDIO REQUEST] Pre-validation | User: %s | File size: %d KB | Actual duration: %.2fs (%.3f hours)", 
+			userEmail, fileSizeKB, actualDurationSeconds, actualDurationSeconds/3600.0)
 		
-		// Pre-validate using estimated duration
-		if err := validateUsageLimits(app, userID, estimatedDurationSeconds/3600.0); err != nil {
-			log.Printf("❌ [AI AUDIO REQUEST] FAILED: Usage limit exceeded (pre-validation) | User: %s | Estimated hours: %.3f | IP: %s | Error: %v", 
-				userEmail, estimatedDurationSeconds/3600.0, clientIP, err)
+		// Pre-validate using actual duration
+		if err := validateUsageLimits(app, userID, actualDurationSeconds/3600.0); err != nil {
+			log.Printf("❌ [AI AUDIO REQUEST] FAILED: Usage limit exceeded (pre-validation) | User: %s | Duration hours: %.3f | IP: %s | Error: %v", 
+				userEmail, actualDurationSeconds/3600.0, clientIP, err)
 			return e.JSON(403, map[string]string{"error": err.Error(), "code": "USAGE_LIMIT_EXCEEDED"})
 		}
 		

@@ -177,8 +177,13 @@ func (m *MockApp) GetUserSubscriptionInfo(userID string) (*MockSubscriptionInfo,
 	return nil, fmt.Errorf("subscription not found")
 }
 
-// Adapted validation functions to work with mock types - Updated to match the new free tier logic
+// Adapted validation functions to work with mock types - Updated to match the new grace period logic
 func validateUsageLimitsMock(app *MockApp, userID string, hoursToAdd float64) error {
+	return validateUsageLimitsMockWithGracePeriod(app, userID, hoursToAdd, 60.0) // Default 60 seconds
+}
+
+func validateUsageLimitsMockWithGracePeriod(app *MockApp, userID string, hoursToAdd float64, gracePeriodSeconds float64) error {
+	gracePeriodHours := gracePeriodSeconds / 3600.0
 	currentMonth := time.Now().Format("2006-01")
 	
 	monthlyUsageRecord, err := app.FindFirstRecordByFilter("monthly_usage", 
@@ -207,6 +212,15 @@ func validateUsageLimitsMock(app *MockApp, userID string, hoursToAdd float64) er
 	projectedUsage := currentHoursUsed + hoursToAdd
 	
 	if projectedUsage > monthlyLimitHours {
+		// Calculate how much the user would exceed their limit
+		excessHours := projectedUsage - monthlyLimitHours
+		
+		// Apply grace period logic: allow if excess is within grace period
+		if excessHours <= gracePeriodHours {
+			return nil // Allow within grace period
+		}
+		
+		// Excess is beyond grace period - reject
 		var planName string
 		if subscriptionInfo != nil {
 			planName = subscriptionInfo.Plan.GetString("name")
@@ -216,8 +230,8 @@ func validateUsageLimitsMock(app *MockApp, userID string, hoursToAdd float64) er
 		} else {
 			planName = "Free" // Fallback plan name
 		}
-		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours)", 
-			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd)
+		return fmt.Errorf("monthly limit of %.1f hours exceeded for %s plan (currently used: %.2f hours, requested: %.2f hours, grace period: %.0f seconds)", 
+			monthlyLimitHours, planName, currentHoursUsed, hoursToAdd, gracePeriodSeconds)
 	}
 	
 	return nil
@@ -567,4 +581,216 @@ func abs(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+// ===============================
+// GRACE PERIOD TESTS
+// ===============================
+
+// Test grace period - User exceeds limit within grace period should be allowed
+func TestValidateUsageLimits_GracePeriod_WithinLimit_ShouldAllow(t *testing.T) {
+	app := NewMockApp()
+	
+	// Setup: User with 2-hour plan, used 1.9 hours
+	userID := "grace_user_1"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 2.0)
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 1.9, 10) // 1.9 hours used
+	
+	// Try to add 0.12 hours (4.32 minutes) - would exceed by 0.02 hours (72 seconds)
+	// Grace period: 60 seconds (0.0167 hours) - should be BLOCKED (72s > 60s)
+	gracePeriodSeconds := 60.0
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 0.12, gracePeriodSeconds)
+	
+	if err == nil {
+		t.Fatal("Expected error for excess beyond grace period, got nil")
+	}
+	
+	if !strings.Contains(err.Error(), "grace period: 60 seconds") {
+		t.Fatalf("Expected grace period error message, got: %s", err.Error())
+	}
+}
+
+// Test grace period - User exceeds limit within grace period should be allowed
+func TestValidateUsageLimits_GracePeriod_WithinGrace_ShouldAllow(t *testing.T) {
+	app := NewMockApp()
+	
+	// Setup: User with 2-hour plan, used 1.95 hours
+	userID := "grace_user_2"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 2.0)
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 1.95, 10) // 1.95 hours used
+	
+	// Try to add 0.065 hours (3.9 minutes) - would exceed by 0.015 hours (54 seconds)
+	// Grace period: 60 seconds - should be ALLOWED (54s <= 60s)
+	gracePeriodSeconds := 60.0
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 0.065, gracePeriodSeconds)
+	
+	if err != nil {
+		t.Fatalf("Expected no error within grace period, got: %v", err)
+	}
+}
+
+// Test grace period - Exactly at grace period boundary
+func TestValidateUsageLimits_GracePeriod_ExactBoundary_ShouldAllow(t *testing.T) {
+	app := NewMockApp()
+	
+	// Setup: User with 1-hour plan, used 0.95 hours
+	userID := "grace_user_3"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 1.0)
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 0.95, 5) // 0.95 hours used
+	
+	// Try to add exactly 0.0667 hours (4 minutes = 240 seconds)  
+	// This would exceed by 0.0167 hours = 60 seconds exactly
+	// Grace period: 60 seconds - should be ALLOWED (60s <= 60s)
+	gracePeriodSeconds := 60.0
+	hoursToAdd := 1.0/60.0 // Exactly 1 minute = 1/60 hours to avoid floating point precision issues
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, hoursToAdd, gracePeriodSeconds)
+	
+	if err != nil {
+		t.Fatalf("Expected no error at exact grace period boundary, got: %v", err)
+	}
+}
+
+// Test grace period - Different grace period values
+func TestValidateUsageLimits_GracePeriod_DifferentPeriods(t *testing.T) {
+	app := NewMockApp()
+	
+	userID := "grace_user_4"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 1.0) // 1 hour limit
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 0.95, 5) // 0.95 hours used (57 minutes)
+	
+	// Try to add exactly 5 minutes - would exceed by exactly 2 minutes (120 seconds)
+	hoursToAdd := 5.0/60.0 // 5 minutes, total would be 57+5=62 minutes = 1.033 hours
+	// Excess: 1.033 - 1.0 = 0.033 hours = 120 seconds
+	
+	// Test 1: Grace period 60 seconds (1 minute) - should be BLOCKED (120s > 60s)
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, hoursToAdd, 60.0)
+	if err == nil {
+		t.Fatal("Expected error with 60s grace period, got nil")
+	}
+	
+	// Test 2: Grace period 200 seconds (3.33 minutes) - should be ALLOWED (120s <= 200s)
+	err = validateUsageLimitsMockWithGracePeriod(app, userID, hoursToAdd, 200.0)
+	if err != nil {
+		t.Fatalf("Expected no error with 200s grace period, got: %v", err)
+	}
+	
+	// Test 3: Grace period 120 seconds exactly - should be ALLOWED (120s <= 120s)
+	err = validateUsageLimitsMockWithGracePeriod(app, userID, hoursToAdd, 120.0)
+	if err != nil {
+		t.Fatalf("Expected no error with exact 120s grace period, got: %v", err)
+	}
+}
+
+// Test grace period - Free tier with grace period
+func TestValidateUsageLimits_GracePeriod_FreeTier_ShouldWork(t *testing.T) {
+	app := NewMockApp()
+	
+	// User without subscription - gets free tier (0.5 hours = 30 minutes)
+	userID := "free_grace_user"
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 0.48, 10) // 0.48 hours (28.8 minutes)
+	
+	// Try to add 0.05 hours (3 minutes) - would exceed by 0.03 hours (108 seconds)
+	// Grace period: 120 seconds - should be ALLOWED (108s <= 120s)
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 0.05, 120.0)
+	if err != nil {
+		t.Fatalf("Expected no error for free tier within grace period, got: %v", err)
+	}
+	
+	// Try to add 0.08 hours (4.8 minutes) - would exceed by 0.06 hours (216 seconds)
+	// Grace period: 120 seconds - should be BLOCKED (216s > 120s)
+	err = validateUsageLimitsMockWithGracePeriod(app, userID, 0.08, 120.0)
+	if err == nil {
+		t.Fatal("Expected error for free tier beyond grace period, got nil")
+	}
+	
+	if !strings.Contains(err.Error(), "monthly limit of 0.5 hours exceeded for Free plan") {
+		t.Fatalf("Expected free tier limit error, got: %s", err.Error())
+	}
+}
+
+// Test grace period - Zero grace period (should behave like old system)
+func TestValidateUsageLimits_GracePeriod_Zero_ShouldBlockImmediately(t *testing.T) {
+	app := NewMockApp()
+	
+	userID := "zero_grace_user"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 2.0)
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 2.0, 10) // Exactly at limit
+	
+	// Try to add any amount with zero grace period - should be blocked
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 0.001, 0.0) // 1/1000th of an hour
+	if err == nil {
+		t.Fatal("Expected error with zero grace period, got nil")
+	}
+	
+	if !strings.Contains(err.Error(), "grace period: 0 seconds") {
+		t.Fatalf("Expected zero grace period in error message, got: %s", err.Error())
+	}
+}
+
+// Test grace period - Large grace period
+func TestValidateUsageLimits_GracePeriod_Large_ShouldWork(t *testing.T) {
+	app := NewMockApp()
+	
+	userID := "large_grace_user"
+	planID := "basic_plan"
+	app.SetPlan(planID, "Basic Plan", 1.0)
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 0.5, 5) // 0.5 hours used
+	
+	// Try to add 1.0 hours - would exceed by 0.5 hours (1800 seconds)
+	// Grace period: 3600 seconds (1 hour) - should be ALLOWED (1800s <= 3600s)
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 1.0, 3600.0)
+	if err != nil {
+		t.Fatalf("Expected no error with large grace period, got: %v", err)
+	}
+}
+
+// Test grace period - Edge case with very small numbers
+func TestValidateUsageLimits_GracePeriod_SmallNumbers_ShouldWork(t *testing.T) {
+	app := NewMockApp()
+	
+	userID := "small_grace_user"
+	planID := "micro_plan"
+	app.SetPlan(planID, "Micro Plan", 0.01) // 0.01 hours = 36 seconds
+	app.SetUserSubscription(userID, planID)
+	
+	currentMonth := time.Now().Format("2006-01")
+	app.SetMonthlyUsage(userID, currentMonth, 0.009, 1) // 0.009 hours = 32.4 seconds
+	
+	// Try to add 0.002 hours (7.2 seconds) - would exceed by 0.001 hours (3.6 seconds)
+	// Grace period: 5 seconds - should be ALLOWED (3.6s <= 5s)
+	err := validateUsageLimitsMockWithGracePeriod(app, userID, 0.002, 5.0)
+	if err != nil {
+		t.Fatalf("Expected no error with small numbers, got: %v", err)
+	}
+	
+	// Try to add 0.003 hours (10.8 seconds) - would exceed by 0.002 hours (7.2 seconds)  
+	// Grace period: 5 seconds - should be BLOCKED (7.2s > 5s)
+	err = validateUsageLimitsMockWithGracePeriod(app, userID, 0.003, 5.0)
+	if err == nil {
+		t.Fatal("Expected error exceeding small grace period, got nil")
+	}
 }
