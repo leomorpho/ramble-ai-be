@@ -225,11 +225,11 @@ func main() {
 
 		// Banner routes
 		se.Router.GET("/api/banners", func(e *core.RequestEvent) error {
-			return bannerhandlers.GetPublicBannersHandler(e, app)
+			return bannerhandlers.GetBannersHandler(e, app)
 		})
 
-		se.Router.GET("/api/banners/authenticated", func(e *core.RequestEvent) error {
-			return bannerhandlers.GetAuthenticatedBannersHandler(e, app)
+		se.Router.POST("/api/banners/dismiss/{id}", func(e *core.RequestEvent) error {
+			return bannerhandlers.DismissBannerHandler(e, app)
 		})
 
 
